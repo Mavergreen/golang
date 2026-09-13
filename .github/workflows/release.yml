@@ -182,6 +182,12 @@ jobs:
       - name: Cross-build the cross toolchain (native arm64)
         run: sh build/build-cross.sh
 
+      # A pure-Go program (no cgo) must come out 10.9-safe too: Go internal-links those unless the
+      # toolchain defaults darwin/amd64 to external linking (patches 0011/0012). The top-level test
+      # runner already ran this script before anything was built, where it SKIPs (77).
+      - name: Pure-Go programs from the cross toolchain are 10.9-safe
+        run: sh tests/pure-go-link.sh
+
       - name: Build the cross Sparkle updater app (native arm64)
         run: |
           BUILD="build/updater-cross"

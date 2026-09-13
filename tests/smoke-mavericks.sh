@@ -35,3 +35,7 @@ ssh "$MAVERICKS_HOST" "sh -c '
   rm -rf /tmp/hb && cp -r /tmp/hello-cgo /tmp/hb && cd /tmp/hb
   (test -f go.mod || go mod init hello-cgo) && go build -o /tmp/hello . && /tmp/hello
 '"
+
+# Pure-Go programs (no cgo, CGO_ENABLED=0, go test binaries) must run too -- see tests/pure-go-link.sh.
+rsync -a "$here/pure-go-link.sh" "$MAVERICKS_HOST:/tmp/pure-go-link.sh"
+ssh "$MAVERICKS_HOST" "PURE_GO_GOROOT=$PREFIX sh /tmp/pure-go-link.sh"
