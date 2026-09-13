@@ -25,6 +25,10 @@ CA=$(sh "$here/fetch-ca.sh" | tail -1)
 # bootstrap link untouched.
 ( unset GOOS GOARCH GOHOSTOS GOHOSTARCH GOROOT_FINAL \
         GO_LDFLAGS BOOT_GO_LDFLAGS GO_BOOTSTRAP_LDFLAGS CGO_LDFLAGS CGO_CFLAGS GO_EXTLINK_ENABLED
+  # Baked into internal/buildcfg as the shipped linker's default (patches 0011/0012): darwin/amd64
+  # binaries -- pure Go included -- external-link through the 10.9 CC wrapper. The arm64 builder's
+  # own links are not darwin/amd64, so they are unaffected.
+  export GO_EXTLINK_ENABLED=darwin/amd64
   export GOROOT_FINAL="$PREFIX"
   export GOCACHE="$WORK/.gocache"
   cd "$WORK/go/src" && ./make.bash -v )
@@ -63,7 +67,8 @@ chmod 755 "$BUILDCC"
 # (go, gofmt, and the pure-Go tools have no cgo), and the internal linker stamps Go's
 # own supported floor -- macOS 12.0 -- which no external -mmacosx-version-min can undo.
 # Forcing external linking routes EVERY binary through the CC wrapper, so all get
-# min-10.9 + the legacy shim (this is what the old build got from GO_EXTLINK_ENABLED=1).
+# min-10.9 + the legacy shim (the baked darwin/amd64 default from Phase A would do this too; the
+# flag keeps the toolchain's own link explicit).
 ( export GOROOT="$WORK/go"
   export GOOS=darwin GOARCH=amd64
   export CGO_ENABLED=1 CC="$BUILDCC"

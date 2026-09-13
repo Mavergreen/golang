@@ -1,0 +1,31 @@
+Give GO_EXTLINK_ENABLED a third value, "darwin/amd64": external-link by default
+when the target is darwin/amd64, and keep the automatic choice for every other
+target. Go internal-links binaries without cgo, and the internal linker never
+runs $CC -- so on OS X 10.9 a pure-Go program (or any CGO_ENABLED=0 build, or a
+go test binary) gets no legacy-support shim, a 12.0 minimum-OS stamp, and dies
+with "dyld: Symbol not found: _clock_gettime". GO_EXTLINK_ENABLED=1 fixes that
+but also forces external linking for GOOS=linux and friends, which then fail
+without a C toolchain for that OS. -linkmode and a link-time GO_EXTLINK_ENABLED
+still override. Inert unless the toolchain was built with this value.
+
+--- src/cmd/link/internal/ld/config.go.orig
++++ src/cmd/link/internal/ld/config.go
+@@ -200,6 +200,18 @@
+ 		case "1":
+ 			ctxt.LinkMode = LinkExternal
+ 			via = "via GO_EXTLINK_ENABLED "
++		case "darwin/amd64":
++			// Mavericks: a darwin/amd64 binary -- pure Go included -- must go through $CC,
++			// whose wrapper links the 10.9 legacy-support shim (clock_gettime et al.) and
++			// stamps a 10.9 minimum OS; the internal linker can do neither. Other targets
++			// (GOOS=linux, ...) keep the automatic choice, so cross-OS builds still link
++			// without a C toolchain for that OS.
++			if buildcfg.GOOS == "darwin" && buildcfg.GOARCH == "amd64" {
++				ctxt.LinkMode = LinkExternal
++				via = "via GO_EXTLINK_ENABLED "
++				break
++			}
++			fallthrough
+ 		default:
+ 			preferExternal := len(preferlinkext) != 0
+ 			if preferExternal && ctxt.Debugvlog > 0 {

@@ -1,0 +1,16 @@
+Accept GO_EXTLINK_ENABLED=darwin/amd64 at make.bash time, so it is baked into
+internal/buildcfg as the linker's default like "0" and "1" are. See the companion
+cmd/link patch for its meaning. Unset (or 0/1), nothing changes.
+
+--- src/cmd/dist/build.go.orig
++++ src/cmd/dist/build.go
+@@ -208,7 +208,8 @@
+ 
+ 	b = os.Getenv("GO_EXTLINK_ENABLED")
+ 	if b != "" {
+-		if b != "0" && b != "1" {
++		// "darwin/amd64" (Mavericks): external-link darwin/amd64 targets by default; see cmd/link.
++		if b != "0" && b != "1" && b != "darwin/amd64" {
+ 			fatalf("unknown $GO_EXTLINK_ENABLED %s", b)
+ 		}
+ 		goextlinkenabled = b

@@ -28,7 +28,8 @@ import "fmt"
 func main() { fmt.Println("mavericks-go126 amd64 toolchain ok") }
 GO
 cd "$tmp"
-PATH="$stage/bin:$PATH" GOROOT="$stage" GOFLAGS= CGO_ENABLED=0 \
+# GO_EXTLINK_ENABLED=0: the staged CC wrapper names install paths absent here; internal-link just to prove amd64 exec.
+PATH="$stage/bin:$PATH" GOROOT="$stage" GOFLAGS= CGO_ENABLED=0 GO_EXTLINK_ENABLED=0 \
 GOCACHE="$WORK/.gocache-selftest" GOPATH="$tmp/gp" \
   sh -c 'go mod init selftest >/dev/null 2>&1; go build -o prog . && ./prog'
 echo "selftest: staged amd64 toolchain compiled + linked + ran a program under emulation: OK"

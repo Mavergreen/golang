@@ -19,6 +19,9 @@ LEGACY_A=$(sh "$here/build-legacy-support.sh" | tail -1)   # amd64 shim vs the 1
 # not to the toolchain binaries. Explicitly clear any native-build env that might leak in.
 unset GOOS GOARCH GOHOSTOS GOHOSTARCH GOROOT_FINAL \
       GO_LDFLAGS BOOT_GO_LDFLAGS GO_BOOTSTRAP_LDFLAGS CGO_LDFLAGS CGO_CFLAGS GO_EXTLINK_ENABLED
+# Baked as the cross linker's default (patches 0011/0012): the darwin/amd64 apps it emits external-link
+# through mavericks-cross-clang even when they have no cgo. Its own arm64 links are unaffected.
+export GO_EXTLINK_ENABLED=darwin/amd64
 export GOROOT_FINAL="$CROSS_PREFIX"
 export GOCACHE="$WORK/.gocache-cross"
 ( cd "$WORK/go/src" && ./make.bash -v )
