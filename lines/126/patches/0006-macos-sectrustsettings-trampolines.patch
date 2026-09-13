@@ -7,7 +7,7 @@ the wrappers. Compare against the upstream source:
 
   https://github.com/golang/go/blob/go1.24.13/src/crypto/x509/internal/macos/security.s
 
---- src/crypto/x509/internal/macos/security.s.orig	2026-05-29 11:26:39.000000000 -0400
+--- src/crypto/x509/internal/macos/security.s.orig
 +++ src/crypto/x509/internal/macos/security.s
 @@ -25,3 +25,7 @@
  	JMP x509_SecCertificateCopyData(SB)

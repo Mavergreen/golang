@@ -7,9 +7,9 @@ any built chain containing a keychain-distrusted cert. keychainUnionDistrusted l
 the no-build-tag union file and is populated only by the darwin init, so it is
 nil on every other platform and this check is inert there.
 
---- src/crypto/x509/verify.go.orig	2026-07-06 03:23:51.000000000 +0000
+--- src/crypto/x509/verify.go.orig
 +++ src/crypto/x509/verify.go
-@@ -603,6 +603,16 @@ func (c *Certificate) Verify(opts Verify
+@@ -603,6 +603,16 @@
  		}
  	}
  
