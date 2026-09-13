@@ -1,17 +1,23 @@
 
-Darwin integration for the keychain-union trust model: enumerate the
-SYSTEM and ADMIN keychain trust domains (skipping USER, which can block on a
-GUI prompt and hang a headless daemon), build the union anchor pool via
-buildKeychainUnionPool, and install it into crypto/x509 at init with the pure-Go
-fallback verifier forced on for macOS too old for a working SecTrust engine
-(< 10.14, where it faults in-framework). @SSLDIR@ is substituted with the
-toolchain's CA-bundle directory by a Makefile SUBST at pre-configure. All identifiers unexported.
+Darwin integration for the keychain-union trust model: enumerate the SYSTEM and
+ADMIN keychain trust domains, build the union anchor pool via
+buildKeychainUnionPool, and install it into crypto/x509 at init. The USER domain
+is not read yet (issue #9); the belief that reading it could block on a
+SecurityAgent prompt was wrong -- that prompt guards writes, and reads were
+verified prompt-free on 10.9.5 in ssh, GUI, root and launchd-daemon contexts.
+
+Go's own verifier is the default; GODEBUG=x509usefallbackroots=0 selects
+Apple's, except below macOS 10.14, where this file still forces Go's verifier
+because upstream's systemVerify crashes there. (The crash is not
+Security.framework's: SecTrustCreateWithCertificates is handed a policies
+CFArray with no retain callbacks. Passing the SecPolicyRef directly works on
+10.9.) @SSLDIR@ is substituted at build time with the toolchain's CA-bundle
+directory. All identifiers unexported.
 
 This revives the keychain-anchor enumeration Go's own crypto/x509 performed
-before the 1.14 platform-verifier rewrite (reference: Go 1.13's
-crypto/x509/root_cgo_darwin.go, which read SecTrustSettings across the keychain
-domains); the logic is re-expressed here in the modern non-cgo trampoline style,
-not copied.
+before its platform-verifier rewrite (reference: Go 1.13's
+crypto/x509/root_cgo_darwin.go); the logic is re-expressed here in the modern
+non-cgo trampoline style, not copied.
 
 --- src/crypto/x509/root_keychainunion_darwin.go.orig
 +++ src/crypto/x509/root_keychainunion_darwin.go
@@ -27,13 +33,13 @@ not copied.
 +	"strings"
 +)
 +
-+// Enumerate SYSTEM(2) and ADMIN(1) only. The USER domain(0) is excluded: reading
-+// it can block on a SecurityAgent GUI prompt, which would hang a headless daemon
-+// like tailscaled. System+admin cover the real trust anchors.
++// Enumerate SYSTEM(2) and ADMIN(1). The USER domain(0) is not read yet (issue #9).
++// Reading it does not prompt: user trust settings live in a root-owned file that
++// securityd reads; the SecurityAgent prompt is for writing them.
 +var keychainUnionTrustDomains = []int{2, 1}
 +
 +// CA-bundle discovery mirrors root_bsd.go's certFiles, plus the toolchain's own
-+// CA-bundle path (@SSLDIR@ substituted at build time by a Makefile SUBST).
++// CA-bundle path (@SSLDIR@ is substituted at build time).
 +var keychainUnionBundlePaths = []string{
 +	"@SSLDIR@/certs/ca-certificates.crt",
 +	"/usr/local/etc/openssl/cert.pem",
@@ -116,12 +122,12 @@ not copied.
 +	keychainUnionDistrusted = distrust
 +	// Default: fallback verifier ON unless explicitly disabled via
 +	// GODEBUG=x509usefallbackroots=0. On macOS too old for a working native
-+	// verifier (SecTrust faults there), force ON regardless of the setting.
++	// verifier (upstream's systemVerify crashes there), force ON regardless of the setting.
 +	useFallbackRoots = x509usefallbackroots.Value() != "0" || keychainUnionNativeVerifierBroken()
 +}
 +
 +// keychainUnionNativeVerifierBroken reports whether Apple's SecTrust engine is unusable
-+// from Go on this macOS (true on < 10.14; it faults in-framework). Reads
++// from Go on this macOS (true on < 10.14, where upstream's systemVerify crashes). Reads
 +// ProductVersion from SystemVersion.plist, present on every macOS.
 +func keychainUnionNativeVerifierBroken() bool {
 +	data, err := os.ReadFile("/System/Library/CoreServices/SystemVersion.plist")
