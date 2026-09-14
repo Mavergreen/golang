@@ -1,0 +1,24 @@
+Make the keychain union crypto/x509's system root store on darwin by serving it
+from loadSystemRoots, instead of claiming the fallback-roots mechanism at init.
+A program's own SetFallbackRoots call (e.g. importing
+golang.org/x/crypto/x509roots/fallback) then behaves as upstream -- ignored
+unless GODEBUG=x509usefallbackroots=1 -- instead of panicking, and the keychain
+is only enumerated when a verification first needs the roots.
+GODEBUG=x509usefallbackroots=0 returns upstream's systemPool marker, selecting
+Apple's verifier. loadSystemRoots has had this shape since Go 1.18.
+
+--- src/crypto/x509/root_darwin.go.orig
++++ src/crypto/x509/root_darwin.go
+@@ -127,5 +127,11 @@
+ }
+ 
+ func loadSystemRoots() (*CertPool, error) {
+-	return &CertPool{systemPool: true}, nil
++	// The keychain union (root_keychainunion_darwin.go) is the system root store, verified
++	// by Go. GODEBUG=x509usefallbackroots=0 selects Apple's verifier instead, through the
++	// systemPool marker, exactly as upstream.
++	if keychainUnionNativeVerifier() {
++		return &CertPool{systemPool: true}, nil
++	}
++	return keychainUnionLoadSystemRoots()
+ }

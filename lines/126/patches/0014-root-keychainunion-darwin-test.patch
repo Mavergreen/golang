@@ -1,0 +1,92 @@
+Darwin tests for the keychain-union trust model: SetFallbackRoots neither panics
+nor displaces the union (unless GODEBUG=x509usefallbackroots=1, as upstream);
+GODEBUG=x509usefallbackroots=0 selects Apple's verifier; and Apple's verifier,
+driven through the calls that exist on older macOS, maps its results to Go's
+typed errors and returns the chain.
+
+--- src/crypto/x509/root_keychainunion_darwin_test.go.orig
++++ src/crypto/x509/root_keychainunion_darwin_test.go
+@@ -0,0 +1,83 @@
++//go:build darwin
++
++package x509
++
++import (
++	"sync"
++	"testing"
++)
++
++// keychainUnionResetSystemRoots gives a test a fresh, not-yet-loaded system-roots state,
++// and leaves a fresh one behind so later tests load lazily again.
++func keychainUnionResetSystemRoots(t *testing.T) {
++	t.Helper()
++	savedDistrust := keychainUnionDistrusted
++	reset := func() {
++		systemRootsMu.Lock()
++		defer systemRootsMu.Unlock()
++		once = sync.Once{}
++		systemRoots, systemRootsErr = nil, nil
++		fallbacksSet, useFallbackRoots = false, false
++	}
++	reset()
++	t.Cleanup(func() {
++		reset()
++		keychainUnionDistrusted = savedDistrust
++	})
++}
++
++// A program importing golang.org/x/crypto/x509roots/fallback calls SetFallbackRoots from
++// its init. It must not panic, and -- as upstream, with the union as the system roots --
++// must not replace the union unless GODEBUG=x509usefallbackroots=1.
++//
++// The first call deliberately runs on the package's real post-init state: that is where
++// the old darwin init left fallbacksSet claimed. This file sorts before root_test.go, whose
++// TestFallback also calls SetFallbackRoots, so nothing earlier has made a legitimate call.
++func TestKeychainUnionSetFallbackRootsDoesNotPanic(t *testing.T) {
++	t.Setenv("GODEBUG", "")
++	func() {
++		defer func() {
++			if r := recover(); r != nil {
++				t.Fatalf("SetFallbackRoots panicked: %v", r)
++			}
++		}()
++		SetFallbackRoots(NewCertPool())
++	}()
++
++	keychainUnionResetSystemRoots(t)
++	fallback := NewCertPool()
++	SetFallbackRoots(fallback)
++	pool := systemRootsPool()
++	if pool == fallback {
++		t.Fatal("the program's fallback pool replaced the keychain union without GODEBUG=x509usefallbackroots=1")
++	}
++	if pool == nil || pool.systemPool || pool.len() == 0 {
++		t.Fatalf("system roots are not the keychain union (nil=%v systemPool=%v)", pool == nil, pool != nil && pool.systemPool)
++	}
++}
++
++func TestKeychainUnionForcedFallbackReplacesUnion(t *testing.T) {
++	keychainUnionResetSystemRoots(t)
++	t.Setenv("GODEBUG", "x509usefallbackroots=1")
++	fallback := NewCertPool()
++	SetFallbackRoots(fallback)
++	if pool := systemRootsPool(); pool != fallback {
++		t.Fatal("GODEBUG=x509usefallbackroots=1 + SetFallbackRoots should use the program's pool, as upstream")
++	}
++}
++
++func TestKeychainUnionNativeOptOut(t *testing.T) {
++	saved := keychainUnionDistrusted
++	t.Cleanup(func() { keychainUnionDistrusted = saved })
++	t.Setenv("GODEBUG", "")
++	if pool, err := loadSystemRoots(); err != nil || pool == nil || pool.systemPool {
++		t.Fatalf("default: want the keychain union, got nil=%v err=%v", pool == nil, err)
++	}
++	if keychainUnionNativeVerifierBroken() {
++		t.Skip("Apple's verifier is not selectable on this macOS until systemVerify is 10.9-safe (Task 10)")
++	}
++	t.Setenv("GODEBUG", "x509usefallbackroots=0")
++	if pool, err := loadSystemRoots(); err != nil || pool == nil || !pool.systemPool {
++		t.Fatalf("GODEBUG=x509usefallbackroots=0: want the systemPool marker, got nil=%v err=%v", pool == nil, err)
++	}
++}

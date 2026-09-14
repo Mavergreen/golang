@@ -6,9 +6,10 @@ the SSL policy (or for all policies) count, hostname-restricted settings are
 skipped -- using Go 1.16/1.17's own pure-Go enumeration
 (https://github.com/golang/go/blob/go1.17.13/src/crypto/x509/root_darwin.go,
 Copyright The Go Authors, BSD-style license), and build the union anchor pool
-via buildKeychainUnionPool. Reading the USER domain does not prompt: user trust
-settings live in a root-owned file securityd reads; the SecurityAgent prompt
-guards writes (verified on 10.9.5 in ssh, GUI, root and launchd contexts).
+via buildKeychainUnionPool; root_darwin.go's loadSystemRoots serves it. Reading
+the USER domain does not prompt: user trust settings live in a root-owned file
+securityd reads; the SecurityAgent prompt guards writes (verified on 10.9.5 in
+ssh, GUI, root and launchd contexts).
 
 Deviations from Go 1.17's code, each also noted in the source:
   - user -> admin fall-through: Go 1.17 consulted admin settings only when the
@@ -35,13 +36,14 @@ directory. All identifiers unexported.
 
 --- src/crypto/x509/root_keychainunion_darwin.go.orig
 +++ src/crypto/x509/root_keychainunion_darwin.go
-@@ -0,0 +1,285 @@
+@@ -0,0 +1,288 @@
 +//go:build darwin
 +
 +package x509
 +
 +import (
 +	"crypto/x509/internal/macos"
++	"errors"
 +	"fmt"
 +	"os"
 +	"strconv"
@@ -276,21 +278,23 @@ directory. All identifiers unexported.
 +	return names, nil
 +}
 +
-+func init() {
++// keychainUnionLoadSystemRoots builds the keychain-union root store. loadSystemRoots calls it
++// under systemRootsMu the first time a verification needs the system roots -- not at program
++// start -- which also records the distrust set for verify.go's veto.
++func keychainUnionLoadSystemRoots() (*CertPool, error) {
 +	paths := keychainUnionResolveBundlePaths(os.Getenv, keychainUnionReadDirNames, keychainUnionBundlePaths)
 +	pool, distrust := buildKeychainUnionPool(keychainUnionEnumerateKeychain(), paths)
-+	if pool == nil {
-+		return
-+	}
-+	systemRootsMu.Lock()
-+	defer systemRootsMu.Unlock()
-+	fallbacksSet = true
-+	systemRoots = pool
 +	keychainUnionDistrusted = distrust
-+	// Default: fallback verifier ON unless explicitly disabled via
-+	// GODEBUG=x509usefallbackroots=0. On macOS too old for a working native
-+	// verifier (upstream's systemVerify crashes there), force ON regardless of the setting.
-+	useFallbackRoots = x509usefallbackroots.Value() != "0" || keychainUnionNativeVerifierBroken()
++	if pool.len() == 0 {
++		return nil, errors.New("x509: no trusted keychain certificates and no CA bundle found")
++	}
++	return pool, nil
++}
++
++// keychainUnionNativeVerifier reports whether Apple's verifier was selected with
++// GODEBUG=x509usefallbackroots=0.
++func keychainUnionNativeVerifier() bool {
++	return x509usefallbackroots.Value() == "0" && !keychainUnionNativeVerifierBroken()
 +}
 +
 +// keychainUnionNativeVerifierBroken reports whether Apple's SecTrust engine is unusable
