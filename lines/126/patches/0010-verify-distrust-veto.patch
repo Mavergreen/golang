@@ -4,8 +4,15 @@ keychain-union trust model). Anchor exclusion alone rejects a distrusted root,
 but not a distrusted intermediate that the server supplies and that also chains
 to a legitimately-trusted root, since Go's CertPool has no denylist. This drops
 any built chain containing a keychain-distrusted cert. keychainUnionDistrusted lives in
-the no-build-tag union file and is populated only by the darwin init, so it is
-nil on every other platform and this check is inert there.
+the no-build-tag union file and is populated only on darwin, lazily, when
+loadSystemRoots (root_darwin.go) builds the union through
+keychainUnionLoadSystemRoots (root_keychainunion_darwin.go) the first time the
+system roots are needed; it is nil on every other platform, and this check is
+inert there.
+
+The veto applies regardless of VerifyOptions.KeyUsages. The distrust set comes
+from the keychain's SSL-policy results, so a certificate marked Never Trust for
+SSL also vetoes a chain verified for client auth, S/MIME or any other usage.
 
 --- src/crypto/x509/verify.go.orig
 +++ src/crypto/x509/verify.go

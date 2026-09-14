@@ -7,9 +7,10 @@ skipped -- using Go 1.16/1.17's own pure-Go enumeration
 (https://github.com/golang/go/blob/go1.17.13/src/crypto/x509/root_darwin.go,
 Copyright The Go Authors, BSD-style license), and build the union anchor pool
 via buildKeychainUnionPool; root_darwin.go's loadSystemRoots serves it. Reading
-the USER domain does not prompt: user trust settings live in a root-owned file
-securityd reads; the SecurityAgent prompt guards writes (verified on 10.9.5 in
-ssh, GUI, root and launchd contexts).
+the USER domain doesn't prompt in any context tested: user trust settings live
+in a root-owned file securityd reads; the SecurityAgent prompt guards writes
+(verified on 10.9.5 in ssh, GUI, root and launchd contexts; a locked login
+keychain is untested).
 
 Deviations from Go 1.17's code, each also noted in the source:
   - user -> admin fall-through: Go 1.17 consulted admin settings only when the
@@ -26,6 +27,12 @@ Deviations from Go 1.17's code, each also noted in the source:
     load, where Go 1.17 failed it: fail-open for that domain's certificates,
     while the CA bundle still serves.
 
+Limitation kept verbatim from Go 1.17 (no behavior change): the
+kSecTrustSettingsApplication key is ignored -- Go 1.17 ignored it too, though
+its comment doesn't list it -- so an SSL TrustRoot restricted to one
+application counts as global trust for every Go program. An added comment line
+beside Go 1.17's list of ignored keys says so.
+
 Go's verifier over that union is the default; GODEBUG=x509usefallbackroots=0
 selects Apple's, on every macOS version. Below 10.15 Apple's verifier is driven
 through SecTrustEvaluate and SecTrustGetCertificateAtIndex, which exist there,
@@ -35,7 +42,7 @@ All identifiers unexported.
 
 --- src/crypto/x509/root_keychainunion_darwin.go.orig
 +++ src/crypto/x509/root_keychainunion_darwin.go
-@@ -0,0 +1,341 @@
+@@ -0,0 +1,345 @@
 +//go:build darwin
 +
 +package x509
@@ -80,6 +87,8 @@ All identifiers unexported.
 +//   - keychainUnionSSLTrustSettingsResult falls through from the user to the
 +//     admin domain when the user's settings have no definitive result for the
 +//     SSL policy (see there);
++//   - its doc comment gains a line noting that kSecTrustSettingsApplication is
++//     ignored, as it was in Go 1.17 (a comment only);
 +//   - identifiers are prefixed.
 +func keychainUnionEnumerateKeychain() []keychainUnionTrustEntry {
 +	var out []keychainUnionTrustEntry
@@ -141,6 +150,8 @@ All identifiers unexported.
 +//
 +// It ignores SecTrustSettingsKeyUsage and kSecTrustSettingsAllowedError, and
 +// doesn't support kSecTrustSettingsDefaultRootCertSetting.
++// [Not from Go: it also ignores kSecTrustSettingsApplication, as Go 1.17 did, so an
++// app-restricted SSL TrustRoot counts as trust for every program.]
 +//
 +// https://developer.apple.com/documentation/security/1400261-sectrustsettingscopytrustsetting
 +func keychainUnionSSLTrustSettingsResult(cert macos.CFRef) (macos.SecTrustSettingsResult, error) {

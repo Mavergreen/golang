@@ -7,8 +7,11 @@ is only enumerated when a verification first needs the roots.
 GODEBUG=x509usefallbackroots=0 returns upstream's systemPool marker, selecting
 Apple's verifier. With GODEBUG=x509usefallbackroots=0 the union is not built,
 so the keychain-distrust veto does not apply to Go-verifier runs with custom
-Roots (upstream's behavior); with =1 it still applies. loadSystemRoots has had
-this shape since Go 1.18.
+Roots (upstream's behavior); with =1 it still applies. If the union comes out
+empty (no keychain anchors and no CA bundle), loadSystemRoots returns an error:
+Verify with nil Roots then falls back to Apple's verifier (systemRoots is nil,
+so it calls systemVerify), while SystemCertPool() returns the error.
+loadSystemRoots has had this shape since Go 1.18.
 
 It also makes upstream's systemVerify safe on older macOS: the SSL policy is
 passed as a single SecPolicyRef rather than inside a one-element CFArray
