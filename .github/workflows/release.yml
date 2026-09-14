@@ -111,10 +111,10 @@ jobs:
           fetch-depth: 0   # build/version.sh counts existing <upstream>-mavericks.* tags
 
       - name: Install mavericks-shipyard
-        # shipyard installs itself via its own action (to $HOME/.local, self-registering in the
-        # CMake user package registry). We do NOT clone/`cmake --install` it by hand. @v1 is the moving
-        # major tag; Renovate's github-actions manager tracks it (no SHA, no marker comment). shipyard's
-        # config auto-scaffolds our .github/renovate.json. Consumed via find_package + versions.sh's SHIPYARD_SCRIPTS.
+        # shipyard installs itself via its own action: the pkg, which puts shipyard-cmake on PATH and
+        # exports $SHIPYARD_SCRIPTS. We do NOT clone or build it by hand. @v1 is the moving major tag;
+        # Renovate's github-actions manager tracks it (no SHA, no marker comment). shipyard's config
+        # auto-scaffolds our .github/renovate.json. Consumed via find_package under shipyard-cmake.
         uses: ModernMavericks/shipyard/.github/actions/install@v1
 
       # The plan job already decided this line's version; take it rather than recomputing, so every
@@ -167,11 +167,11 @@ jobs:
       - name: Build the Sparkle updater app (Cocoa/ObjC; must not link Go)
         run: |
           BUILD="build/updater"
-          # find_package resolves MavericksShipyard from the user package registry (installed above);
-          # no CMAKE_PREFIX_PATH, no vendored copy. The x86_64 Sparkle slice is auto-derived from the
-          # native updater's CMAKE_OSX_ARCHITECTURES by mavericks_add_updater_app.
-          cmake -S . -B "$BUILD" -DCMAKE_OBJC_COMPILER=/usr/bin/clang
-          cmake --build "$BUILD" --target GoUpdater
+          # find_package resolves MavericksShipyard from shipyard-cmake's own prefix (the pkg installed
+          # above); no CMAKE_PREFIX_PATH, no vendored copy. The x86_64 Sparkle slice is auto-derived from
+          # the native updater's CMAKE_OSX_ARCHITECTURES by mavericks_add_updater_app.
+          shipyard-cmake -S . -B "$BUILD" -DCMAKE_OBJC_COMPILER=/usr/bin/clang
+          shipyard-cmake --build "$BUILD" --target GoUpdater
           otool -L "$BUILD/GoUpdater.app/Contents/MacOS/GoUpdater" | tee /tmp/o.txt
           ! grep -qi 'usr/local/go126' /tmp/o.txt || { echo "::error::updater links the toolchain it updates"; exit 1; }
 
@@ -193,8 +193,8 @@ jobs:
           BUILD="build/updater-cross"
           # The arm64 Sparkle slice is auto-derived from the cross updater's CMAKE_OSX_ARCHITECTURES
           # (arm64, set by MAVGO_VARIANT=cross) -- no hand-plumbed framework path.
-          cmake -S . -B "$BUILD" -DMAVGO_VARIANT=cross -DCMAKE_OBJC_COMPILER=/usr/bin/clang
-          cmake --build "$BUILD" --target GoCrossUpdater
+          shipyard-cmake -S . -B "$BUILD" -DMAVGO_VARIANT=cross -DCMAKE_OBJC_COMPILER=/usr/bin/clang
+          shipyard-cmake --build "$BUILD" --target GoCrossUpdater
 
       - name: Package the cross .pkg + tarball + manifest
         run: UPD_APP="build/updater-cross/GoCrossUpdater.app" sh build/package-cross-pkg.sh

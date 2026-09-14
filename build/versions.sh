@@ -61,24 +61,6 @@ export WLU_SYMS="_SecTrustEvaluateWithError _SecTrustCopyCertificateChain _notif
 export CA_URL="https://curl.se/ca/cacert.pem"
 export CA_SHA256="3ff344e30b9b1ed2971044eabb438a08f2e2245ddb5f8ab1a3ad8b63ab4eaf91"  # curl.se cacert.pem, Mozilla 2026-07-16
 
-# mavericks-shipyard is a find_package package INSTALLED to a prefix and
-# self-registered in CMake's user package registry -- it is NOT vendored or
-# consumed from a sibling checkout. Resolve its installed scripts/ dir (for the
-# shell callers: SDK fetch, compat guard, productbuild floor, signer, appcast):
-#   1. $MAVERICKS_SHARED_SCRIPTS override, else
-#   2. the user package registry entry (honors whatever --prefix it was installed to), else
-#   3. a sibling checkout (dev-only fallback).
-_mav_shared_scripts() {
-  if [ -n "${MAVERICKS_SHARED_SCRIPTS:-}" ] && [ -d "$MAVERICKS_SHARED_SCRIPTS" ]; then
-    printf '%s\n' "$MAVERICKS_SHARED_SCRIPTS"; return 0
-  fi
-  for _r in "$HOME/.cmake/packages/MavericksShipyard/"*; do
-    [ -f "$_r" ] || continue
-    _d="$(cat "$_r")/scripts"
-    [ -d "$_d" ] && { printf '%s\n' "$_d"; return 0; }
-  done
-  [ -d "$REPO_ROOT/../mavericks-shipyard/scripts" ] && \
-    { printf '%s\n' "$REPO_ROOT/../mavericks-shipyard/scripts"; return 0; }
-  return 1
-}
-SHIPYARD_SCRIPTS="$(_mav_shared_scripts || true)"; export SHIPYARD_SCRIPTS
+# $SHIPYARD / $SHIPYARD_SCRIPTS -- which the shell callers read after sourcing this file (SDK fetch,
+# compat guard, productbuild floor, signer, appcast) -- come from build/lib.sh above, which sources
+# build/msc.sh. This file used to resolve them a second time, its own way.
