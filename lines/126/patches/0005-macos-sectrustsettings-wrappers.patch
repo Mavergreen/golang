@@ -9,13 +9,17 @@ way Go 1.16/1.17 did:
     https://github.com/golang/go/blob/go1.24.13/src/crypto/x509/internal/macos/security.go
   - SecPolicyCopyProperties -- Go 1.18:
     https://github.com/golang/go/blob/go1.18.10/src/crypto/x509/internal/macos/security.go
+  - SecTrustResultType, SecTrustGetCertificateCount, SecTrustGetCertificateAtIndex
+    -- Go 1.24 (same permalink), for Apple's verifier on macOS < 10.15.
+  - SecTrustGetCssmResultCode -- NOT from Go; an original wrapper in the same
+    shape, mapping older macOS's evaluation failures to Go's typed errors.
 
 The CF key string values were confirmed against the Security.framework symbols
 on OS X 10.9.5.
 
 --- src/crypto/x509/internal/macos/security.go.orig
 +++ src/crypto/x509/internal/macos/security.go
-@@ -145,3 +145,83 @@
+@@ -145,3 +145,134 @@
  	return CFRef(ret), nil
  }
  func x509_SecTrustCopyCertificateChain_trampoline()
@@ -99,3 +103,54 @@ on OS X 10.9.5.
 +	return CFRef(ret)
 +}
 +func x509_SecPolicyCopyProperties_trampoline()
++
++// Restored from Go 1.24:
++// https://github.com/golang/go/blob/go1.24.13/src/crypto/x509/internal/macos/security.go
++
++type SecTrustResultType int32
++
++const (
++	SecTrustResultInvalid SecTrustResultType = iota
++	SecTrustResultProceed
++	SecTrustResultConfirm // deprecated
++	SecTrustResultDeny
++	SecTrustResultUnspecified
++	SecTrustResultRecoverableTrustFailure
++	SecTrustResultFatalTrustFailure
++	SecTrustResultOtherError
++)
++
++//go:cgo_import_dynamic x509_SecTrustGetCertificateCount SecTrustGetCertificateCount "/System/Library/Frameworks/Security.framework/Versions/A/Security"
++
++func SecTrustGetCertificateCount(trustObj CFRef) int {
++	ret := syscall(abi.FuncPCABI0(x509_SecTrustGetCertificateCount_trampoline), uintptr(trustObj), 0, 0, 0, 0, 0)
++	return int(ret)
++}
++func x509_SecTrustGetCertificateCount_trampoline()
++
++//go:cgo_import_dynamic x509_SecTrustGetCertificateAtIndex SecTrustGetCertificateAtIndex "/System/Library/Frameworks/Security.framework/Versions/A/Security"
++
++func SecTrustGetCertificateAtIndex(trustObj CFRef, i int) (CFRef, error) {
++	ret := syscall(abi.FuncPCABI0(x509_SecTrustGetCertificateAtIndex_trampoline), uintptr(trustObj), uintptr(i), 0, 0, 0, 0)
++	if ret == 0 {
++		return 0, OSStatus{"SecTrustGetCertificateAtIndex", int32(ret)}
++	}
++	return CFRef(ret), nil
++}
++func x509_SecTrustGetCertificateAtIndex_trampoline()
++
++// Not from Go: the CSSM result code SecTrustEvaluate leaves behind on older macOS, which
++// distinguishes an untrusted root, an expired certificate and a hostname mismatch where
++// SecTrustResultType says only "recoverable failure". Same wrapper shape as the above.
++
++//go:cgo_import_dynamic x509_SecTrustGetCssmResultCode SecTrustGetCssmResultCode "/System/Library/Frameworks/Security.framework/Versions/A/Security"
++
++func SecTrustGetCssmResultCode(trustObj CFRef) (int32, error) {
++	var code int32
++	ret := syscall(abi.FuncPCABI0(x509_SecTrustGetCssmResultCode_trampoline), uintptr(trustObj), uintptr(unsafe.Pointer(&code)), 0, 0, 0, 0)
++	if int32(ret) != 0 {
++		return 0, OSStatus{"SecTrustGetCssmResultCode", int32(ret)}
++	}
++	return code, nil
++}
++func x509_SecTrustGetCssmResultCode_trampoline()

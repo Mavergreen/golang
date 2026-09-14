@@ -26,17 +26,16 @@ Deviations from Go 1.17's code, each also noted in the source:
     load, where Go 1.17 failed it: fail-open for that domain's certificates,
     while the CA bundle still serves.
 
-Go's own verifier is the default; GODEBUG=x509usefallbackroots=0 selects
-Apple's, except below macOS 10.14, where this file still forces Go's verifier
-because upstream's systemVerify crashes there. (The crash is not
-Security.framework's: SecTrustCreateWithCertificates is handed a policies
-CFArray with no retain callbacks. Passing the SecPolicyRef directly works on
-10.9.) @SSLDIR@ is substituted at build time with the toolchain's CA-bundle
-directory. All identifiers unexported.
+Go's verifier over that union is the default; GODEBUG=x509usefallbackroots=0
+selects Apple's, on every macOS version. Below 10.15 Apple's verifier is driven
+through SecTrustEvaluate and SecTrustGetCertificateAtIndex, which exist there,
+with SecTrustGetCssmResultCode mapping failures to Go's typed errors.
+@SSLDIR@ is substituted at build time with the toolchain's CA-bundle directory.
+All identifiers unexported.
 
 --- src/crypto/x509/root_keychainunion_darwin.go.orig
 +++ src/crypto/x509/root_keychainunion_darwin.go
-@@ -0,0 +1,288 @@
+@@ -0,0 +1,340 @@
 +//go:build darwin
 +
 +package x509
@@ -48,6 +47,7 @@ directory. All identifiers unexported.
 +	"os"
 +	"strconv"
 +	"strings"
++	"sync"
 +)
 +
 +// CA-bundle discovery mirrors root_bsd.go's certFiles, plus the toolchain's own
@@ -284,44 +284,95 @@ directory. All identifiers unexported.
 +func keychainUnionLoadSystemRoots() (*CertPool, error) {
 +	paths := keychainUnionResolveBundlePaths(os.Getenv, keychainUnionReadDirNames, keychainUnionBundlePaths)
 +	pool, distrust := buildKeychainUnionPool(keychainUnionEnumerateKeychain(), paths)
-+	keychainUnionDistrusted = distrust
 +	if pool.len() == 0 {
 +		return nil, errors.New("x509: no trusted keychain certificates and no CA bundle found")
 +	}
++	// Not on the empty path: SystemCertPool reruns that outside the Once and systemRootsMu, racing verify-time readers.
++	keychainUnionDistrusted = distrust
 +	return pool, nil
 +}
 +
 +// keychainUnionNativeVerifier reports whether Apple's verifier was selected with
 +// GODEBUG=x509usefallbackroots=0.
 +func keychainUnionNativeVerifier() bool {
-+	return x509usefallbackroots.Value() == "0" && !keychainUnionNativeVerifierBroken()
++	return x509usefallbackroots.Value() == "0"
 +}
 +
-+// keychainUnionNativeVerifierBroken reports whether Apple's SecTrust engine is unusable
-+// from Go on this macOS (true on < 10.14, where upstream's systemVerify crashes). Reads
-+// ProductVersion from SystemVersion.plist, present on every macOS.
-+func keychainUnionNativeVerifierBroken() bool {
++// keychainUnionForceLegacySecTrust makes systemVerify use the older-macOS SecTrust calls
++// regardless of version. Tests only.
++var keychainUnionForceLegacySecTrust bool
++
++var keychainUnionLegacyByVersion = sync.OnceValue(func() bool {
++	major, minor, ok := keychainUnionMacOSVersion()
++	return ok && (major < 10 || (major == 10 && minor < 15))
++})
++
++// keychainUnionLegacySecTrust reports whether systemVerify must use SecTrustEvaluate (10.3)
++// and SecTrustGetCertificateAtIndex (10.7) instead of SecTrustEvaluateWithError (10.14) and
++// SecTrustCopyCertificateChain (10.15), which older macOS lacks. 10.15+ keeps upstream's calls.
++func keychainUnionLegacySecTrust() bool {
++	return keychainUnionForceLegacySecTrust || keychainUnionLegacyByVersion()
++}
++
++// CSSM result codes (cssmerr.h, Apple TP) that SecTrustGetCssmResultCode reports for the
++// failures Go types; observed on OS X 10.9.5.
++const (
++	keychainUnionCssmErrTPCertExpired           = -2147409654 // CSSMERR_TP_CERT_EXPIRED
++	keychainUnionCssmErrTPNotTrusted            = -2147409622 // CSSMERR_TP_NOT_TRUSTED
++	keychainUnionCssmErrAppleTPHostnameMismatch = -2147408896 // CSSMERR_APPLETP_HOSTNAME_MISMATCH
++)
++
++// keychainUnionLegacyEvaluate runs Apple's evaluation through SecTrustEvaluate and maps a
++// failure to the error upstream's SecTrustEvaluateWithError path would return.
++func keychainUnionLegacyEvaluate(c *Certificate, opts *VerifyOptions, trustObj macos.CFRef) error {
++	result, err := macos.SecTrustEvaluate(trustObj)
++	if err != nil {
++		return err
++	}
++	switch macos.SecTrustResultType(result) {
++	case macos.SecTrustResultProceed, macos.SecTrustResultUnspecified:
++		return nil
++	case macos.SecTrustResultDeny:
++		return UnknownAuthorityError{Cert: c}
++	}
++	code, err := macos.SecTrustGetCssmResultCode(trustObj)
++	if err != nil {
++		return err
++	}
++	switch code {
++	case keychainUnionCssmErrTPCertExpired:
++		return CertificateInvalidError{c, Expired, "certificate has expired"}
++	case keychainUnionCssmErrAppleTPHostnameMismatch:
++		return HostnameError{c, opts.DNSName}
++	case keychainUnionCssmErrTPNotTrusted:
++		return UnknownAuthorityError{Cert: c}
++	}
++	return fmt.Errorf("x509: SecTrustEvaluate result %d, CSSM result %d", int32(result), code)
++}
++
++// keychainUnionMacOSVersion reads ProductVersion from SystemVersion.plist, present on every
++// macOS, without spawning sw_vers (this runs inside any program that verifies a certificate).
++func keychainUnionMacOSVersion() (major, minor int, ok bool) {
 +	data, err := os.ReadFile("/System/Library/CoreServices/SystemVersion.plist")
 +	if err != nil {
-+		return false
++		return 0, 0, false
 +	}
 +	s := string(data)
 +	i := strings.Index(s, "<key>ProductVersion</key>")
 +	if i < 0 {
-+		return false
++		return 0, 0, false
 +	}
 +	rest := s[i:]
 +	a := strings.Index(rest, "<string>")
 +	b := strings.Index(rest, "</string>")
 +	if a < 0 || b < 0 || b < a {
-+		return false
++		return 0, 0, false
 +	}
-+	ver := rest[a+len("<string>") : b]
-+	parts := strings.SplitN(ver, ".", 3)
++	parts := strings.SplitN(rest[a+len("<string>"):b], ".", 3)
 +	if len(parts) < 2 {
-+		return false
++		return 0, 0, false
 +	}
-+	major, _ := strconv.Atoi(parts[0])
-+	minor, _ := strconv.Atoi(parts[1])
-+	return major < 10 || (major == 10 && minor < 14)
++	major, err1 := strconv.Atoi(parts[0])
++	minor, err2 := strconv.Atoi(parts[1])
++	return major, minor, err1 == nil && err2 == nil
 +}

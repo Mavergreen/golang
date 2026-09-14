@@ -5,11 +5,98 @@ golang.org/x/crypto/x509roots/fallback) then behaves as upstream -- ignored
 unless GODEBUG=x509usefallbackroots=1 -- instead of panicking, and the keychain
 is only enumerated when a verification first needs the roots.
 GODEBUG=x509usefallbackroots=0 returns upstream's systemPool marker, selecting
-Apple's verifier. loadSystemRoots has had this shape since Go 1.18.
+Apple's verifier. With GODEBUG=x509usefallbackroots=0 the union is not built,
+so the keychain-distrust veto does not apply to Go-verifier runs with custom
+Roots (upstream's behavior); with =1 it still applies. loadSystemRoots has had
+this shape since Go 1.18.
+
+It also makes upstream's systemVerify safe on older macOS: the SSL policy is
+passed as a SecPolicyRef rather than inside a CFArray built without retain
+callbacks (Security.framework on OS X 10.9 faults on that array), and below
+10.15 the evaluation and chain use SecTrustEvaluate and
+SecTrustGetCertificateAtIndex (as Go 1.24 did for the chain). 10.15+ keeps
+upstream's calls.
 
 --- src/crypto/x509/root_darwin.go.orig
 +++ src/crypto/x509/root_darwin.go
-@@ -127,5 +127,11 @@
+@@ -32,15 +32,16 @@
+ 		}
+ 	}
+ 
+-	policies := macos.CFArrayCreateMutable()
+-	defer macos.ReleaseCFArray(policies)
++	// Pass the SSL policy itself, not a one-element CFArray: CFArrayCreateMutable builds
++	// an array without retain callbacks, and Security.framework on OS X 10.9 over-releases
++	// through it (SecTrustEvaluate faults). A single SecPolicyRef works on every version.
+ 	sslPolicy, err := macos.SecPolicyCreateSSL(opts.DNSName)
+ 	if err != nil {
+ 		return nil, err
+ 	}
+-	macos.CFArrayAppendValue(policies, sslPolicy)
++	defer macos.CFRelease(sslPolicy)
+ 
+-	trustObj, err := macos.SecTrustCreateWithCertificates(certs, policies)
++	trustObj, err := macos.SecTrustCreateWithCertificates(certs, sslPolicy)
+ 	if err != nil {
+ 		return nil, err
+ 	}
+@@ -59,7 +60,11 @@
+ 	// always enforce its SCT requirements, and there are still _some_ people
+ 	// using TLS or OCSP for that.
+ 
+-	if ret, err := macos.SecTrustEvaluateWithError(trustObj); err != nil {
++	if keychainUnionLegacySecTrust() {
++		if err := keychainUnionLegacyEvaluate(c, opts, trustObj); err != nil {
++			return nil, err
++		}
++	} else if ret, err := macos.SecTrustEvaluateWithError(trustObj); err != nil {
+ 		switch ret {
+ 		case macos.ErrSecCertificateExpired:
+ 			return nil, CertificateInvalidError{c, Expired, err.Error()}
+@@ -73,18 +78,33 @@
+ 	}
+ 
+ 	chain := [][]*Certificate{{}}
+-	chainRef, err := macos.SecTrustCopyCertificateChain(trustObj)
+-	if err != nil {
+-		return nil, err
+-	}
+-	defer macos.CFRelease(chainRef)
+-	for i := 0; i < macos.CFArrayGetCount(chainRef); i++ {
+-		certRef := macos.CFArrayGetValueAtIndex(chainRef, i)
+-		cert, err := exportCertificate(certRef)
++	if keychainUnionLegacySecTrust() {
++		// Go 1.24's loop, for macOS < 10.15, which lacks SecTrustCopyCertificateChain.
++		for i := 0; i < macos.SecTrustGetCertificateCount(trustObj); i++ {
++			certRef, err := macos.SecTrustGetCertificateAtIndex(trustObj, i)
++			if err != nil {
++				return nil, err
++			}
++			cert, err := exportCertificate(certRef)
++			if err != nil {
++				return nil, err
++			}
++			chain[0] = append(chain[0], cert)
++		}
++	} else {
++		chainRef, err := macos.SecTrustCopyCertificateChain(trustObj)
+ 		if err != nil {
+ 			return nil, err
+ 		}
+-		chain[0] = append(chain[0], cert)
++		defer macos.CFRelease(chainRef)
++		for i := 0; i < macos.CFArrayGetCount(chainRef); i++ {
++			certRef := macos.CFArrayGetValueAtIndex(chainRef, i)
++			cert, err := exportCertificate(certRef)
++			if err != nil {
++				return nil, err
++			}
++			chain[0] = append(chain[0], cert)
++		}
+ 	}
+ 	if len(chain[0]) == 0 {
+ 		// This should _never_ happen, but to be safe
+@@ -127,5 +147,11 @@
  }
  
  func loadSystemRoots() (*CertPool, error) {

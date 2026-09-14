@@ -6,15 +6,29 @@ typed errors and returns the chain.
 
 --- src/crypto/x509/root_keychainunion_darwin_test.go.orig
 +++ src/crypto/x509/root_keychainunion_darwin_test.go
-@@ -0,0 +1,83 @@
+@@ -0,0 +1,188 @@
 +//go:build darwin
 +
 +package x509
 +
 +import (
++	"crypto/ecdsa"
++	"crypto/elliptic"
++	"crypto/rand"
++	"crypto/x509/pkix"
++	"math/big"
++	"os"
 +	"sync"
 +	"testing"
++	"time"
 +)
++
++// keychainUnionFallbacksSetAtInit records fallbacksSet as every package init left it. Internal
++// test files compile after the package's own files, so this init runs after all of those. The
++// old darwin init claimed fallbacksSet, which made any program's SetFallbackRoots panic.
++var keychainUnionFallbacksSetAtInit bool
++
++func init() { keychainUnionFallbacksSetAtInit = fallbacksSet }
 +
 +// keychainUnionResetSystemRoots gives a test a fresh, not-yet-loaded system-roots state,
 +// and leaves a fresh one behind so later tests load lazily again.
@@ -38,20 +52,11 @@ typed errors and returns the chain.
 +// A program importing golang.org/x/crypto/x509roots/fallback calls SetFallbackRoots from
 +// its init. It must not panic, and -- as upstream, with the union as the system roots --
 +// must not replace the union unless GODEBUG=x509usefallbackroots=1.
-+//
-+// The first call deliberately runs on the package's real post-init state: that is where
-+// the old darwin init left fallbacksSet claimed. This file sorts before root_test.go, whose
-+// TestFallback also calls SetFallbackRoots, so nothing earlier has made a legitimate call.
 +func TestKeychainUnionSetFallbackRootsDoesNotPanic(t *testing.T) {
 +	t.Setenv("GODEBUG", "")
-+	func() {
-+		defer func() {
-+			if r := recover(); r != nil {
-+				t.Fatalf("SetFallbackRoots panicked: %v", r)
-+			}
-+		}()
-+		SetFallbackRoots(NewCertPool())
-+	}()
++	if keychainUnionFallbacksSetAtInit {
++		t.Fatal("a package init claimed fallbacksSet: any program's SetFallbackRoots would panic")
++	}
 +
 +	keychainUnionResetSystemRoots(t)
 +	fallback := NewCertPool()
@@ -82,11 +87,111 @@ typed errors and returns the chain.
 +	if pool, err := loadSystemRoots(); err != nil || pool == nil || pool.systemPool {
 +		t.Fatalf("default: want the keychain union, got nil=%v err=%v", pool == nil, err)
 +	}
-+	if keychainUnionNativeVerifierBroken() {
-+		t.Skip("Apple's verifier is not selectable on this macOS until systemVerify is 10.9-safe (Task 10)")
-+	}
 +	t.Setenv("GODEBUG", "x509usefallbackroots=0")
 +	if pool, err := loadSystemRoots(); err != nil || pool == nil || !pool.systemPool {
 +		t.Fatalf("GODEBUG=x509usefallbackroots=0: want the systemPool marker, got nil=%v err=%v", pool == nil, err)
++	}
++}
++
++func keychainUnionForceLegacy(t *testing.T) {
++	t.Helper()
++	keychainUnionForceLegacySecTrust = true
++	t.Cleanup(func() { keychainUnionForceLegacySecTrust = false })
++}
++
++// keychainUnionSelfSignedServer returns a self-signed TLS server certificate for name.
++func keychainUnionSelfSignedServer(t *testing.T, name string) *Certificate {
++	t.Helper()
++	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
++	if err != nil {
++		t.Fatal(err)
++	}
++	tmpl := &Certificate{
++		SerialNumber:          big.NewInt(42),
++		Subject:               pkix.Name{CommonName: name},
++		DNSNames:              []string{name},
++		NotBefore:             time.Now().Add(-time.Hour),
++		NotAfter:              time.Now().Add(time.Hour),
++		KeyUsage:              KeyUsageDigitalSignature,
++		ExtKeyUsage:           []ExtKeyUsage{ExtKeyUsageServerAuth},
++		BasicConstraintsValid: true,
++	}
++	der, err := CreateCertificate(rand.Reader, tmpl, tmpl, &key.PublicKey, key)
++	if err != nil {
++		t.Fatal(err)
++	}
++	cert, err := ParseCertificate(der)
++	if err != nil {
++		t.Fatal(err)
++	}
++	return cert
++}
++
++func TestKeychainUnionLegacySecTrustRejectsUntrusted(t *testing.T) {
++	keychainUnionForceLegacy(t)
++	cert := keychainUnionSelfSignedServer(t, "legacy.keychainunion.test")
++	_, err := cert.systemVerify(&VerifyOptions{DNSName: "legacy.keychainunion.test", CurrentTime: time.Now()})
++	if _, ok := err.(UnknownAuthorityError); !ok {
++		t.Fatalf("got %v (%T), want UnknownAuthorityError", err, err)
++	}
++}
++
++// keychainUnionFixture returns the captured leaf and a pool of the rest of its chain.
++func keychainUnionFixture(t *testing.T) (*Certificate, *CertPool) {
++	t.Helper()
++	data, err := os.ReadFile("testdata/keychainunion-isrgrootx1-chain.pem")
++	if err != nil {
++		t.Fatal(err)
++	}
++	certs := keychainUnionParseBundle(data)
++	if len(certs) < 2 || len(certs[0].DNSNames) == 0 {
++		t.Fatalf("fixture: want a leaf with a DNS name plus its chain, got %d certificates", len(certs))
++	}
++	inters := NewCertPool()
++	for _, c := range certs[1:] {
++		inters.AddCert(c)
++	}
++	return certs[0], inters
++}
++
++// Apple's verifier, through the older-macOS calls (forced) and through whatever this macOS
++// selects (auto). Skips when the host's keychain doesn't trust ISRG Root X1.
++func TestKeychainUnionSystemVerifyVerifiesChain(t *testing.T) {
++	for _, legacy := range []bool{true, false} {
++		name := map[bool]string{true: "legacy", false: "auto"}[legacy]
++		t.Run(name, func(t *testing.T) {
++			if legacy {
++				keychainUnionForceLegacy(t)
++			}
++			leaf, inters := keychainUnionFixture(t)
++			opts := &VerifyOptions{DNSName: leaf.DNSNames[0], Intermediates: inters, CurrentTime: leaf.NotBefore.Add(24 * time.Hour)}
++			chains, err := leaf.systemVerify(opts)
++			if _, ok := err.(UnknownAuthorityError); ok {
++				t.Skipf("this host's keychain does not trust the fixture's root: %v", err)
++			}
++			if err != nil {
++				t.Fatal(err)
++			}
++			if len(chains) != 1 || len(chains[0]) < 2 || !chains[0][0].Equal(leaf) {
++				t.Fatalf("unexpected chains: %v", chains)
++			}
++		})
++	}
++}
++
++func TestKeychainUnionLegacySecTrustTypedErrors(t *testing.T) {
++	keychainUnionForceLegacy(t)
++	leaf, inters := keychainUnionFixture(t)
++	inside := leaf.NotBefore.Add(24 * time.Hour)
++	if _, err := leaf.systemVerify(&VerifyOptions{DNSName: leaf.DNSNames[0], Intermediates: inters, CurrentTime: inside}); err != nil {
++		t.Skipf("fixture does not verify on this host: %v", err)
++	}
++	_, err := leaf.systemVerify(&VerifyOptions{DNSName: "wrong.keychainunion.test", Intermediates: inters, CurrentTime: inside})
++	if _, ok := err.(HostnameError); !ok {
++		t.Errorf("wrong host: got %v (%T), want HostnameError", err, err)
++	}
++	_, err = leaf.systemVerify(&VerifyOptions{DNSName: leaf.DNSNames[0], Intermediates: inters, CurrentTime: leaf.NotAfter.Add(48 * time.Hour)})
++	if e, ok := err.(CertificateInvalidError); !ok || e.Reason != Expired {
++		t.Errorf("expired: got %v (%T), want CertificateInvalidError{Reason: Expired}", err, err)
 +	}
 +}
