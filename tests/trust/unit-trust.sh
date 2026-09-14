@@ -21,9 +21,13 @@ rm -rf "$WORK/go"
 sh "$here/../../build/fetch-go.sh"
 sh "$here/../../build/apply-patches.sh"
 ( cd "$WORK/go/src" && GOROOT_BOOTSTRAP="$GOROOT_BOOTSTRAP" ./make.bash ) 1>&2
-out=$(GOROOT="$WORK/go" "$WORK/go/bin/go" test crypto/x509 -run KeychainUnion -count=1 -v 2>&1)
+out=$(GOROOT="$WORK/go" "$WORK/go/bin/go" test crypto/x509 -run 'KeychainUnion|Fallback' -count=1 -v 2>&1)
 printf '%s\n' "$out"
 printf '%s\n' "$out" | grep -q '^ok[[:space:]]' || { echo "FATAL: crypto/x509 trust tests did not pass" >&2; exit 1; }
 passed=$(printf '%s\n' "$out" | grep -c '^--- PASS: Test[A-Za-z_]*KeychainUnion')
-[ "$passed" -ge 5 ] || { echo "FATAL: expected >=5 KeychainUnion tests to run+pass, saw $passed -- did -run match nothing?" >&2; exit 1; }
+# 9 portable + at least the 3 darwin tests that never skip (SetFallbackRoots x2, native opt-out).
+[ "$passed" -ge 12 ] || { echo "FATAL: expected >=12 KeychainUnion tests to run+pass, saw $passed -- did -run match nothing?" >&2; exit 1; }
+for t in TestFallback TestFallbackPanic; do
+  printf '%s\n' "$out" | grep -q "^--- PASS: $t " || { echo "FATAL: upstream $t did not pass" >&2; exit 1; }
+done
 echo "unit-trust OK ($passed trust tests passed)"
