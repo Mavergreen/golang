@@ -60,4 +60,16 @@ Run ON the box: sh tests/trust/acceptance-onbox.sh after each change below.
 5. Same certificate -> "Never Trust". Expect untrusted-root.badssl.com REJECTED in both modes, and
    userdeny "ok user Never Trust ... BadSSL ... rejected".
 6. Restore: delete the BadSSL certificate from the "login" keychain.
+
+-- User -> admin fall-through, [union] (semi-manual) --
+The BadSSL root is untrusted anyway, so this check hands it in as its own CA bundle -- then only
+a keychain Never Trust can reject it:
+   ( cd tests/trust && SSL_CERT_FILE=/tmp/badssl-root.pem go run verify_tls.go https://untrusted-root.badssl.com/ )
+7. With the BadSSL certificate in no keychain, run that: expect VERIFIED (the bundle anchors it).
+8. Import /tmp/badssl-root.pem into the "System" keychain; Get Info -> Trust ->
+   "Secure Sockets Layer (SSL)" = Never Trust (authenticate as admin). Import it into the
+   "login" keychain too; Get Info -> Trust -> "Secure Mime (S/MIME)" = Always Trust, the rest
+   "no value specified". Run it again: expect REJECTED ("unknown authority"). The user's
+   S/MIME-only setting says nothing about SSL, so the admin's Never Trust applies.
+9. Restore: delete the BadSSL certificate from both the "login" and "System" keychains.
 EOF

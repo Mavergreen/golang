@@ -37,4 +37,9 @@ passed=$(printf '%s\n' "$out" | grep -c '^--- PASS: Test[A-Za-z_]*KeychainUnion'
 for t in TestFallback TestFallbackPanic; do
   printf '%s\n' "$out" | grep -q "^--- PASS: $t " || { echo "FATAL: upstream $t did not pass" >&2; exit 1; }
 done
+# CI's macOS can't exercise the 10.9 fix in systemVerify, so assert it in the source: the SSL
+# policy goes to SecTrustCreateWithCertificates directly, because on OS X 10.9 SecTrustEvaluate
+# faults when the policies argument is a CFArray (one built by CFArrayCreateMutable).
+grep -q 'SecTrustCreateWithCertificates(certs, sslPolicy)' "$WORK/go/src/crypto/x509/root_darwin.go" \
+  || { echo "FATAL: root_darwin.go no longer passes the SSL policy directly to SecTrustCreateWithCertificates -- 10.9's SecTrustEvaluate faults on a policies CFArray" >&2; exit 1; }
 echo "unit-trust OK ($passed trust tests passed)"
