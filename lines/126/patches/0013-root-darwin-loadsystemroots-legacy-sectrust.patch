@@ -11,11 +11,13 @@ Roots (upstream's behavior); with =1 it still applies. loadSystemRoots has had
 this shape since Go 1.18.
 
 It also makes upstream's systemVerify safe on older macOS: the SSL policy is
-passed as a SecPolicyRef rather than inside a CFArray built without retain
-callbacks (Security.framework on OS X 10.9 faults on that array), and below
-10.15 the evaluation and chain use SecTrustEvaluate and
-SecTrustGetCertificateAtIndex (as Go 1.24 did for the chain). 10.15+ keeps
-upstream's calls.
+passed as a single SecPolicyRef rather than inside a one-element CFArray
+(on OS X 10.9, SecTrustEvaluate faults when the policies argument is an array
+built by CFArrayCreateMutable, which has no retain callbacks), and below 10.15
+the evaluation and chain use SecTrustEvaluate and SecTrustGetCertificateAtIndex,
+the chain loop adapted from Go 1.24's
+(https://github.com/golang/go/blob/go1.24.13/src/crypto/x509/root_darwin.go).
+10.15+ keeps upstream's calls.
 
 --- src/crypto/x509/root_darwin.go.orig
 +++ src/crypto/x509/root_darwin.go
@@ -25,9 +27,9 @@ upstream's calls.
  
 -	policies := macos.CFArrayCreateMutable()
 -	defer macos.ReleaseCFArray(policies)
-+	// Pass the SSL policy itself, not a one-element CFArray: CFArrayCreateMutable builds
-+	// an array without retain callbacks, and Security.framework on OS X 10.9 over-releases
-+	// through it (SecTrustEvaluate faults). A single SecPolicyRef works on every version.
++	// Pass the SSL policy itself, not a one-element CFArray: on OS X 10.9, SecTrustEvaluate
++	// faults when the policies argument is an array built by CFArrayCreateMutable (no retain
++	// callbacks). A single SecPolicyRef works on every version.
  	sslPolicy, err := macos.SecPolicyCreateSSL(opts.DNSName)
  	if err != nil {
  		return nil, err
@@ -53,7 +55,7 @@ upstream's calls.
  		switch ret {
  		case macos.ErrSecCertificateExpired:
  			return nil, CertificateInvalidError{c, Expired, err.Error()}
-@@ -73,18 +78,33 @@
+@@ -73,18 +78,34 @@
  	}
  
  	chain := [][]*Certificate{{}}
@@ -66,7 +68,8 @@ upstream's calls.
 -		certRef := macos.CFArrayGetValueAtIndex(chainRef, i)
 -		cert, err := exportCertificate(certRef)
 +	if keychainUnionLegacySecTrust() {
-+		// Go 1.24's loop, for macOS < 10.15, which lacks SecTrustCopyCertificateChain.
++		// Adapted from Go 1.24's loop, for macOS < 10.15 (no SecTrustCopyCertificateChain):
++		// https://github.com/golang/go/blob/go1.24.13/src/crypto/x509/root_darwin.go
 +		for i := 0; i < macos.SecTrustGetCertificateCount(trustObj); i++ {
 +			certRef, err := macos.SecTrustGetCertificateAtIndex(trustObj, i)
 +			if err != nil {
@@ -96,7 +99,7 @@ upstream's calls.
  	}
  	if len(chain[0]) == 0 {
  		// This should _never_ happen, but to be safe
-@@ -127,5 +147,11 @@
+@@ -127,5 +148,11 @@
  }
  
  func loadSystemRoots() (*CertPool, error) {

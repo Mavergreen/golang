@@ -35,7 +35,7 @@ All identifiers unexported.
 
 --- src/crypto/x509/root_keychainunion_darwin.go.orig
 +++ src/crypto/x509/root_keychainunion_darwin.go
-@@ -0,0 +1,340 @@
+@@ -0,0 +1,341 @@
 +//go:build darwin
 +
 +package x509
@@ -287,7 +287,8 @@ All identifiers unexported.
 +	if pool.len() == 0 {
 +		return nil, errors.New("x509: no trusted keychain certificates and no CA bundle found")
 +	}
-+	// Not on the empty path: SystemCertPool reruns that outside the Once and systemRootsMu, racing verify-time readers.
++	// Record the distrust set only with a usable pool: an empty result leaves systemRoots nil,
++	// and SystemCertPool then re-runs this outside systemRootsMu.
 +	keychainUnionDistrusted = distrust
 +	return pool, nil
 +}
