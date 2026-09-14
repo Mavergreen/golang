@@ -7,7 +7,7 @@ and leaf, so it needs no build constraint and no real keychain.
 
 --- src/crypto/x509/root_keychainunion_test.go.orig
 +++ src/crypto/x509/root_keychainunion_test.go
-@@ -0,0 +1,178 @@
+@@ -0,0 +1,231 @@
 +package x509
 +
 +import (
@@ -184,5 +184,58 @@ and leaf, so it needs no build constraint and no real keychain.
 +	pool, _ := buildKeychainUnionPool(nil, []string{bundle})
 +	if _, err := leaf.Verify(VerifyOptions{Roots: pool, CurrentTime: time.Now()}); err != nil {
 +		t.Fatalf("leaf failed against a user-bundle root: %v", err)
++	}
++}
++
++// Apple: "kSecTrustSettingsResultTrustRoot can only be applied to root (self-signed)
++// certificates; kSecTrustSettingsResultTrustAsRoot can only be applied to non-root
++// certificates." (Go 1.16/1.17 enforced the same.)
++func TestKeychainUnionTrustRootIgnoredForNonRoot(t *testing.T) {
++	_, inter, leaf := keychainUnionTestChain3(t)
++	inters := NewCertPool()
++	inters.AddCert(inter)
++	pool, _ := buildKeychainUnionPool([]keychainUnionTrustEntry{{der: inter.Raw, result: keychainUnionTrustRoot}}, nil)
++	if _, err := leaf.Verify(VerifyOptions{Roots: pool, CurrentTime: time.Now()}); err == nil {
++		t.Fatal("TrustRoot on a non-self-signed certificate made it an anchor")
++	}
++}
++
++func TestKeychainUnionTrustAsRootAdmitsIntermediate(t *testing.T) {
++	_, inter, leaf := keychainUnionTestChain3(t)
++	pool, _ := buildKeychainUnionPool([]keychainUnionTrustEntry{{der: inter.Raw, result: keychainUnionTrustAsRoot}}, nil)
++	if _, err := leaf.Verify(VerifyOptions{Roots: pool, CurrentTime: time.Now()}); err != nil {
++		t.Fatalf("TrustAsRoot intermediate should anchor its leaf: %v", err)
++	}
++	root, leaf2 := keychainUnionTestChain(t)
++	pool, _ = buildKeychainUnionPool([]keychainUnionTrustEntry{{der: root.Raw, result: keychainUnionTrustAsRoot}}, nil)
++	if _, err := leaf2.Verify(VerifyOptions{Roots: pool, CurrentTime: time.Now()}); err == nil {
++		t.Fatal("TrustAsRoot on a self-signed root made it an anchor")
++	}
++}
++
++func TestKeychainUnionUnspecifiedAndInvalidAnchorNothing(t *testing.T) {
++	root, leaf := keychainUnionTestChain(t)
++	for _, r := range []int{keychainUnionTrustUnspec, keychainUnionTrustInvalid} {
++		pool, _ := buildKeychainUnionPool([]keychainUnionTrustEntry{{der: root.Raw, result: r}}, nil)
++		if _, err := leaf.Verify(VerifyOptions{Roots: pool, CurrentTime: time.Now()}); err == nil {
++			t.Fatalf("result %d made the root an anchor", r)
++		}
++	}
++}
++
++// A root the keychain distrusts must not become an anchor just because the CA bundle
++// also carries it -- even with the verify-time veto switched off.
++func TestKeychainUnionDenyRemovesBundleRoot(t *testing.T) {
++	root, leaf := keychainUnionTestChain(t)
++	bundle := t.TempDir() + "/ca.pem"
++	if err := os.WriteFile(bundle, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: root.Raw}), 0o644); err != nil {
++		t.Fatal(err)
++	}
++	saved := keychainUnionDistrusted
++	keychainUnionDistrusted = nil
++	defer func() { keychainUnionDistrusted = saved }()
++	pool, _ := buildKeychainUnionPool([]keychainUnionTrustEntry{{der: root.Raw, result: keychainUnionTrustDeny}}, []string{bundle})
++	if _, err := leaf.Verify(VerifyOptions{Roots: pool, CurrentTime: time.Now()}); err == nil {
++		t.Fatal("a keychain-distrusted root was anchored via the CA bundle")
 +	}
 +}

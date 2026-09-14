@@ -2,31 +2,35 @@
 Add the platform-independent core of the keychain-union trust model:
 buildKeychainUnionPool takes enumerated keychain entries (cert DER + effective
 kSecTrustSettingsResult) plus CA-bundle paths and returns the anchor pool
-(trusted keychain certs union bundle certs) and the distrust set (SHA-256 of
-Deny'd certs) used for the verify-time veto. No build constraint, so it is
-unit-testable on any platform; the darwin enumeration that feeds it is a
-separate patch. All identifiers are unexported to avoid changing the standard
-library's public API.
+(trusted keychain certs union bundle certs, minus anything distrusted) and the
+distrust set (SHA-256 of Deny'd certs) used for the verify-time veto.
+TrustRoot/TrustAsRoot follow Apple's rule (self-signed vs not), as Go 1.16/1.17
+did. No build constraint, so it is unit-testable on any platform; the darwin
+enumeration that feeds it is a separate patch. All identifiers are unexported
+to avoid changing the standard library's public API.
 
 --- src/crypto/x509/root_keychainunion.go.orig
 +++ src/crypto/x509/root_keychainunion.go
-@@ -0,0 +1,111 @@
+@@ -0,0 +1,154 @@
 +package x509
 +
 +import (
++	"bytes"
 +	"crypto/sha256"
++	"encoding/pem"
 +	"os"
 +	"strings"
 +)
 +
-+// Effective keychain trust results, mirroring Apple's kSecTrustSettingsResult
-+// (1=TrustRoot, 2=TrustAsRoot, 3=Deny, 4=Unspecified); 0 = no explicit setting,
-+// which Apple treats as trust-as-root.
++// Effective keychain trust results, mirroring Apple's kSecTrustSettingsResult. The
++// darwin enumeration resolves each certificate's result for the SSL policy, with
++// Keychain Access precedence (user over admin over system), before it gets here.
 +const (
-+	keychainUnionTrustRoot   = 1
-+	keychainUnionTrustAsRoot = 2
-+	keychainUnionTrustDeny   = 3
-+	keychainUnionTrustUnspec = 4
++	keychainUnionTrustInvalid = 0
++	keychainUnionTrustRoot    = 1
++	keychainUnionTrustAsRoot  = 2
++	keychainUnionTrustDeny    = 3
++	keychainUnionTrustUnspec  = 4
 +)
 +
 +// keychainUnionTrustEntry is one enumerated keychain certificate and its effective
@@ -39,31 +43,71 @@ library's public API.
 +func keychainUnionFingerprint(der []byte) [32]byte { return sha256.Sum256(der) }
 +
 +// buildKeychainUnionPool returns the anchor pool (trusted keychain certs ∪ bundle
-+// certs) and the distrust set (SHA-256 of Deny'd keychain certs). A Deny'd cert
-+// is excluded from anchors AND recorded for the verify-time veto (Task 6).
++// certs, minus every distrusted cert) and the distrust set (SHA-256 of certs whose
++// effective result is Deny), which verify.go also uses to veto whole chains.
++//
++// As in Apple's semantics (and Go 1.16/1.17's), TrustRoot anchors only a self-signed
++// certificate and TrustAsRoot only a non-self-signed one; Unspecified and Invalid
++// anchor nothing.
 +func buildKeychainUnionPool(entries []keychainUnionTrustEntry, bundlePaths []string) (*CertPool, map[[32]byte]bool) {
-+	pool := NewCertPool()
 +	distrust := make(map[[32]byte]bool)
++	var trusted []*Certificate
 +	for _, e := range entries {
 +		cert, err := ParseCertificate(e.der)
 +		if err != nil {
 +			continue // skip unparseable keychain entries
 +		}
++		selfSigned := bytes.Equal(cert.RawSubject, cert.RawIssuer)
 +		switch e.result {
 +		case keychainUnionTrustDeny:
 +			distrust[keychainUnionFingerprint(e.der)] = true
-+		case keychainUnionTrustRoot, keychainUnionTrustAsRoot, 0:
++		case keychainUnionTrustRoot:
++			if selfSigned {
++				trusted = append(trusted, cert)
++			}
++		case keychainUnionTrustAsRoot:
++			if !selfSigned {
++				trusted = append(trusted, cert)
++			}
++		}
++	}
++	pool := NewCertPool()
++	for _, cert := range trusted {
++		if !distrust[keychainUnionFingerprint(cert.Raw)] {
 +			pool.AddCert(cert)
-+		case keychainUnionTrustUnspec:
-+			// not an anchor on its own
 +		}
 +	}
 +	for _, p := range bundlePaths {
-+		if pem := keychainUnionReadBundle(p); pem != nil {
-+			pool.AppendCertsFromPEM(pem)
++		for _, cert := range keychainUnionParseBundle(keychainUnionReadBundle(p)) {
++			if !distrust[keychainUnionFingerprint(cert.Raw)] {
++				pool.AddCert(cert)
++			}
 +		}
 +	}
 +	return pool, distrust
++}
++
++// keychainUnionParseBundle parses every CERTIFICATE block in a PEM bundle, skipping
++// anything else (AppendCertsFromPEM's tolerance, but the certs are needed here to
++// check them against the distrust set).
++func keychainUnionParseBundle(data []byte) []*Certificate {
++	var out []*Certificate
++	for len(data) > 0 {
++		var block *pem.Block
++		block, data = pem.Decode(data)
++		if block == nil {
++			break
++		}
++		if block.Type != "CERTIFICATE" || len(block.Headers) != 0 {
++			continue
++		}
++		cert, err := ParseCertificate(block.Bytes)
++		if err != nil {
++			continue
++		}
++		out = append(out, cert)
++	}
++	return out
 +}
 +
 +func keychainUnionReadBundle(path string) []byte {
@@ -75,8 +119,8 @@ library's public API.
 +}
 +
 +// keychainUnionDistrusted holds SHA-256 fingerprints of keychain-distrusted certs,
-+// populated on darwin by the WS1 init. nil on other platforms, which makes the
-+// verify.go veto a no-op there.
++// populated on darwin when the system roots load. nil on other platforms, which
++// makes the verify.go veto a no-op there.
 +var keychainUnionDistrusted map[[32]byte]bool
 +
 +// keychainUnionFilterDistrusted drops any chain containing a distrusted cert.
