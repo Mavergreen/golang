@@ -53,8 +53,11 @@ GitHub Releases. Ships as `golang-<gover>-native-mavericks.<rev>.pkg` and
 ## Non-obvious invariants (details in `memory/`)
 
 - **Repo is on NFS — build on local disk** (`WORK` defaults to `~/.cache`). [[mavericks-golang-nfs-build-location]]
-- **Every on-box `go build` links via the invisible `mavericks-clang` CC wrapper** (go.env). [[mavericks-go126-downstream-linking]]
-- **The amd64 toolchain is cross-linked `-linkmode=external`** so pure-Go binaries (go/gofmt/tools)
+- **Every darwin/amd64 link goes through the CC wrapper, pure Go included.** The toolchains are built
+  with `GO_EXTLINK_ENABLED=darwin/amd64` baked in (patches 0011/0012): Go internal-links cgo-free
+  binaries otherwise, and those die on 10.9 (`_clock_gettime`). Other GOOS targets keep the automatic
+  choice. `tests/pure-go-link.sh` is the gate (CI: cross toolchain; box: `smoke-mavericks.sh`).
+- **The amd64 toolchain is cross-linked `-linkmode=external`** so the toolchain's own binaries (go/gofmt/tools)
   route through the min-10.9 CC wrapper — Go 1.26 internal-links them to a 12.0 floor otherwise.
   `link-recipe.sh` (the old `-extldflags`/`GO_EXTLINK_ENABLED` plumbing) is gone; the CC wrappers
   inject the shim directly. [[mavericks-go126-downstream-linking]]

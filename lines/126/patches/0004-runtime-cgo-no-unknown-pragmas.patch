@@ -12,9 +12,11 @@ SUBST_CLASSES cgoclang.
 --- src/runtime/cgo/cgo.go.orig
 +++ src/runtime/cgo/cgo.go
 @@ -26,7 +26,7 @@
+ // Use -fno-stack-protector to avoid problems locating the
  // proper support functions. See issues #52919, #54313, #58385.
  // Use -Wdeclaration-after-statement because some CI builds use it.
 -#cgo CFLAGS: -Wall -Werror -fno-stack-protector -Wdeclaration-after-statement
 +#cgo CFLAGS: -Wall -Werror -fno-stack-protector -Wdeclaration-after-statement -Wno-unknown-pragmas
-
+ 
  #cgo solaris CPPFLAGS: -D_POSIX_PTHREAD_SEMANTICS
+ 

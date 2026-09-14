@@ -8,7 +8,7 @@ unit-testable on any platform; the darwin enumeration that feeds it is a
 separate patch. All identifiers are unexported to avoid changing the standard
 library's public API.
 
---- src/crypto/x509/root_keychainunion.go.orig	2026-07-06 03:21:11.000000000 +0000
+--- src/crypto/x509/root_keychainunion.go.orig
 +++ src/crypto/x509/root_keychainunion.go
 @@ -0,0 +1,111 @@
 +package x509

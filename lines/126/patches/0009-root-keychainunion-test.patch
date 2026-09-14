@@ -5,7 +5,7 @@ fail to verify against it), while a TrustRoot keychain root is admitted as an
 anchor (a leaf verifies against it). Uses a locally generated self-signed root
 and leaf, so it needs no build constraint and no real keychain.
 
---- src/crypto/x509/root_keychainunion_test.go.orig	2026-07-06 03:21:11.000000000 +0000
+--- src/crypto/x509/root_keychainunion_test.go.orig
 +++ src/crypto/x509/root_keychainunion_test.go
 @@ -0,0 +1,178 @@
 +package x509

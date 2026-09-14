@@ -16,7 +16,7 @@ from the predecessor packaging's patch-src_runtime_sys__darwin.go.
  	return
  }
  func osinit_hack_trampoline()
-
+ 
 +// osinit_hack_supported reports whether osinit_hack should run. notify_is_valid_token
 +// (called by the trampoline) exists only on macOS 10.12+ (Darwin 16+); on older
 +// systems it is absent -- calling it dyld-faults -- and the fork+exec hang the hack
