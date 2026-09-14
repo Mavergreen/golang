@@ -1,14 +1,29 @@
 
 Darwin integration for the keychain-union trust model: enumerate the USER,
 ADMIN and SYSTEM keychain trust domains with Keychain Access semantics -- user
-settings override admin settings, only settings for the SSL policy (or for all
-policies) count, hostname-restricted settings are skipped -- using Go
-1.16/1.17's own pure-Go enumeration
+settings override admin settings for the policy they cover, only settings for
+the SSL policy (or for all policies) count, hostname-restricted settings are
+skipped -- using Go 1.16/1.17's own pure-Go enumeration
 (https://github.com/golang/go/blob/go1.17.13/src/crypto/x509/root_darwin.go,
 Copyright The Go Authors, BSD-style license), and build the union anchor pool
 via buildKeychainUnionPool. Reading the USER domain does not prompt: user trust
 settings live in a root-owned file securityd reads; the SecurityAgent prompt
 guards writes (verified on 10.9.5 in ssh, GUI, root and launchd contexts).
+
+Deviations from Go 1.17's code, each also noted in the source:
+  - user -> admin fall-through: Go 1.17 consulted admin settings only when the
+    user had none; here a user domain with no definitive result for SSL (other
+    policies only, hostname-restricted, or Unspecified) falls through to the
+    admin domain, as Apple evaluates it, so an admin "Never Trust" is not lost
+    (golang.org/issue/38888). sslTrustSettingsResult is split in two for this:
+    keychainUnionSSLTrustSettingsFromArray is its second half, unchanged.
+  - SecCertificateCopyData replaces SecItemExport (exportCertificate).
+  - Debug lines print the domain and index instead of cert.Subject.
+  - The TrustRoot/TrustAsRoot/Deny/Unspecified result switch lives in
+    buildKeychainUnionPool; enumeration only returns entries.
+  - A domain that fails to enumerate is skipped instead of failing the whole
+    load, where Go 1.17 failed it: fail-open for that domain's certificates,
+    while the CA bundle still serves.
 
 Go's own verifier is the default; GODEBUG=x509usefallbackroots=0 selects
 Apple's, except below macOS 10.14, where this file still forces Go's verifier
@@ -20,7 +35,7 @@ directory. All identifiers unexported.
 
 --- src/crypto/x509/root_keychainunion_darwin.go.orig
 +++ src/crypto/x509/root_keychainunion_darwin.go
-@@ -0,0 +1,254 @@
+@@ -0,0 +1,285 @@
 +//go:build darwin
 +
 +package x509
@@ -51,9 +66,19 @@ directory. All identifiers unexported.
 +// Adapted from Go 1.16/1.17's crypto/x509/root_darwin.go loadSystemRoots
 +// (Copyright 2020 The Go Authors, BSD-style license):
 +// https://github.com/golang/go/blob/go1.17.13/src/crypto/x509/root_darwin.go
-+// Changes: returns entries for buildKeychainUnionPool instead of building a pool;
-+// a domain that fails to enumerate is skipped instead of failing the whole load
-+// (the CA bundle can still serve); identifiers prefixed.
++// Changes from Go 1.17:
++//   - it returns entries for buildKeychainUnionPool, which applies Go 1.17's
++//     result switch (TrustRoot, TrustAsRoot, Deny, Unspecified), instead of
++//     building a pool itself;
++//   - SecCertificateCopyData replaces SecItemExport (exportCertificate);
++//   - debug lines print the domain and index instead of cert.Subject;
++//   - a domain that fails to enumerate is skipped instead of failing the whole
++//     load: fail-open for that domain's certificates, while the CA bundle still
++//     serves;
++//   - keychainUnionSSLTrustSettingsResult falls through from the user to the
++//     admin domain when the user's settings have no definitive result for the
++//     SSL policy (see there);
++//   - identifiers are prefixed.
 +func keychainUnionEnumerateKeychain() []keychainUnionTrustEntry {
 +	var out []keychainUnionTrustEntry
 +
@@ -127,30 +152,51 @@ directory. All identifiers unexported.
 +	// Security-59306.41.2/trust/trustd/SecCertificateSource.c for a concrete example
 +	// of how Apple applies the override in the case of NULL trust settings, or non
 +	// success errors.
-+	trustSettings, err := macos.SecTrustSettingsCopyTrustSettings(cert, macos.SecTrustSettingsDomainUser)
-+	if err != nil || trustSettings == 0 {
-+		if keychainUnionDebug && err != macos.ErrNoTrustSettings {
-+			fmt.Fprintf(os.Stderr, "crypto/x509: SecTrustSettingsCopyTrustSettings for SecTrustSettingsDomainUser failed: %s\n", err)
++	for _, domain := range []macos.SecTrustSettingsDomain{
++		macos.SecTrustSettingsDomainUser,
++		macos.SecTrustSettingsDomainAdmin,
++	} {
++		trustSettings, err := macos.SecTrustSettingsCopyTrustSettings(cert, domain)
++		if err != nil || trustSettings == 0 {
++			if keychainUnionDebug && err != macos.ErrNoTrustSettings {
++				name := "SecTrustSettingsDomainUser"
++				if domain == macos.SecTrustSettingsDomainAdmin {
++					name = "SecTrustSettingsDomainAdmin"
++				}
++				fmt.Fprintf(os.Stderr, "crypto/x509: SecTrustSettingsCopyTrustSettings for %s failed: %s\n", name, err)
++			}
++			continue
 +		}
-+		trustSettings, err = macos.SecTrustSettingsCopyTrustSettings(cert, macos.SecTrustSettingsDomainAdmin)
-+	}
-+	if err != nil || trustSettings == 0 {
-+		// If there are neither user nor admin trust settings for a certificate returned
-+		// from SecTrustSettingsCopyCertificates Apple returns kSecTrustSettingsResultInvalid,
-+		// as this method is intended to return certificates _which have trust settings_.
-+		// The most likely case for this being triggered is that the existing trust settings
-+		// are invalid and cannot be properly parsed. In this case SecTrustSettingsCopyTrustSettings
-+		// returns errSecInvalidTrustSettings. The existing cgo implementation returns
-+		// kSecTrustSettingsResultUnspecified in this case, which mostly matches the Apple
-+		// implementation because we don't do anything with certificates marked with this
-+		// result.
-+		//
-+		// See SecPVCGetTrustSettingsResult in Security-59306.41.2/trust/trustd/SecPolicyServer.c
-+		if keychainUnionDebug && err != macos.ErrNoTrustSettings {
-+			fmt.Fprintf(os.Stderr, "crypto/x509: SecTrustSettingsCopyTrustSettings for SecTrustSettingsDomainAdmin failed: %s\n", err)
++		result, err := keychainUnionSSLTrustSettingsFromArray(trustSettings)
++		if err != nil || result != macos.SecTrustSettingsResultUnspecified {
++			return result, err
 +		}
-+		return macos.SecTrustSettingsResultUnspecified, nil
++		// Deviation from Go 1.17, which consulted the admin settings only when the
++		// user had none at all: Apple evaluates the next domain when a domain has no
++		// definitive entry for the policy, so a user domain whose settings give no
++		// result for SSL (settings only for other policies, hostname-restricted, or
++		// an explicit Unspecified) falls through to the admin domain, and an admin
++		// "Never Trust" for SSL is not silently lost (golang.org/issue/38888).
 +	}
++
++	// If there are neither user nor admin trust settings for a certificate returned
++	// from SecTrustSettingsCopyCertificates Apple returns kSecTrustSettingsResultInvalid,
++	// as this method is intended to return certificates _which have trust settings_.
++	// The most likely case for this being triggered is that the existing trust settings
++	// are invalid and cannot be properly parsed. In this case SecTrustSettingsCopyTrustSettings
++	// returns errSecInvalidTrustSettings. The existing cgo implementation returns
++	// kSecTrustSettingsResultUnspecified in this case, which mostly matches the Apple
++	// implementation because we don't do anything with certificates marked with this
++	// result.
++	//
++	// See SecPVCGetTrustSettingsResult in Security-59306.41.2/trust/trustd/SecPolicyServer.c
++	return macos.SecTrustSettingsResultUnspecified, nil
++}
++
++// keychainUnionSSLTrustSettingsFromArray returns the kSecTrustSettingsResult for the SSL
++// policy from one domain's trust settings array, and releases the array. Its body is
++// the second half of Go 1.17's sslTrustSettingsResult, unchanged.
++func keychainUnionSSLTrustSettingsFromArray(trustSettings macos.CFRef) (macos.SecTrustSettingsResult, error) {
 +	defer macos.CFRelease(trustSettings)
 +
 +	// "An empty trust settings array means 'always trust this certificate' with an

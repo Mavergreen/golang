@@ -1,6 +1,9 @@
 // userdeny checks crypto/x509 against the REAL user trust domain of the account running it:
-// every certificate the user marked "Never Trust" (for SSL, or for everything) must be rejected,
-// and every self-signed one marked "Always Trust" must verify. cgo reads the settings through
+// every self-signed certificate the user marked "Never Trust" (for SSL, or for everything) must
+// be rejected as signed by an unknown authority, and every self-signed one marked "Always Trust"
+// must verify. Non-self-signed certificates are skipped: verifying one alone proves nothing
+// about its trust setting. Each is verified inside its own validity window, so expiry cannot
+// mask the result. cgo reads the settings through
 // Security.framework, independently of crypto/x509's own enumeration. Exit 77 when the user has
 // no such settings. Usage (on the Mavericks box): go build -o /tmp/userdeny . && /tmp/userdeny
 package main
@@ -11,7 +14,8 @@ package main
 
 static CFMutableArrayRef found;
 
-// effective returns the user-domain SSL result for cert: 3 Deny, 1 TrustRoot, 0 neither.
+// effective returns the user-domain SSL result for cert: 3 Deny, 1 TrustRoot, 2 TrustAsRoot,
+// 0 none of those. Like Go and Apple, it stops at the first TrustRoot, TrustAsRoot or Deny.
 static int effective(SecCertificateRef cert) {
 	CFArrayRef settings = NULL;
 	if (SecTrustSettingsCopyTrustSettings(cert, kSecTrustSettingsDomainUser, &settings) != errSecSuccess || settings == NULL)
@@ -25,7 +29,8 @@ static int effective(SecCertificateRef cert) {
 		CFTypeRef pol = CFDictionaryGetValue(d, kSecTrustSettingsPolicy);
 		if (pol) {
 			CFDictionaryRef props = SecPolicyCopyProperties((SecPolicyRef)pol);
-			int ssl = props && CFEqual(CFDictionaryGetValue(props, kSecPolicyOid), kSecPolicyAppleSSL);
+			CFTypeRef oid = props ? CFDictionaryGetValue(props, kSecPolicyOid) : NULL;
+			int ssl = oid && CFEqual(oid, kSecPolicyAppleSSL);
 			if (props)
 				CFRelease(props);
 			if (!ssl)
@@ -35,9 +40,10 @@ static int effective(SecCertificateRef cert) {
 			continue;
 		SInt32 v = kSecTrustSettingsResultTrustRoot;
 		CFNumberRef r = CFDictionaryGetValue(d, kSecTrustSettingsResult);
-		if (r)
-			CFNumberGetValue(r, kCFNumberSInt32Type, &v);
-		if (v == kSecTrustSettingsResultDeny || v == kSecTrustSettingsResultTrustRoot)
+		if (r && !CFNumberGetValue(r, kCFNumberSInt32Type, &v))
+			continue; // an unreadable result is skipped, not taken as TrustRoot
+		if (v == kSecTrustSettingsResultDeny || v == kSecTrustSettingsResultTrustRoot ||
+		    v == kSecTrustSettingsResultTrustAsRoot)
 			out = v;
 	}
 	CFRelease(settings);
@@ -100,6 +106,11 @@ func main() {
 			if err != nil {
 				continue
 			}
+			selfSigned := bytes.Equal(cert.RawSubject, cert.RawIssuer)
+			if want == 3 && !selfSigned {
+				fmt.Printf("skip user Never Trust %q: not self-signed, verifying it alone proves nothing\n", cert.Subject)
+				continue
+			}
 			// Verify inside the cert's own validity window: an expired cert must not pass the Never Trust check for the wrong reason.
 			mid := cert.NotBefore.Add(cert.NotAfter.Sub(cert.NotBefore) / 2)
 			_, verr := cert.Verify(x509.VerifyOptions{KeyUsages: []x509.ExtKeyUsage{x509.ExtKeyUsageAny}, CurrentTime: mid})
@@ -113,7 +124,7 @@ func main() {
 				failed = true
 			case want == 3:
 				fmt.Printf("ok   user Never Trust %q rejected: %v\n", cert.Subject, verr)
-			case !bytes.Equal(cert.RawSubject, cert.RawIssuer):
+			case !selfSigned:
 				continue // Always Trust on a non-root anchors nothing by itself
 			case verr != nil:
 				fmt.Printf("FAIL user Always Trust %q does not verify: %v\n", cert.Subject, verr)
