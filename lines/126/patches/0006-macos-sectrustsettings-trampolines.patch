@@ -1,19 +1,19 @@
-
-Assembly trampolines for the two SecTrustSettingsCopy* wrappers restored in the
-companion security.go patch (they are address-taken from Go code). These are the
-standard NOSPLIT JMP stubs upstream Go uses for every such wrapper; the pair
-below is byte-for-byte Go's own code from Go 1.24, removed in Go 1.26 alongside
-the wrappers. Compare against the upstream source:
+Assembly trampolines for the wrappers restored in the companion security.go
+patch (they are address-taken from Go code): the standard NOSPLIT JMP stubs,
+byte-for-byte Go's own from Go 1.24 and Go 1.18:
 
   https://github.com/golang/go/blob/go1.24.13/src/crypto/x509/internal/macos/security.s
+  https://github.com/golang/go/blob/go1.18.10/src/crypto/x509/internal/macos/security.s
 
 --- src/crypto/x509/internal/macos/security.s.orig
 +++ src/crypto/x509/internal/macos/security.s
-@@ -25,3 +25,7 @@
+@@ -25,3 +25,9 @@
  	JMP x509_SecCertificateCopyData(SB)
  TEXT ·x509_SecTrustCopyCertificateChain_trampoline(SB),NOSPLIT,$0-0
  	JMP x509_SecTrustCopyCertificateChain(SB)
 +TEXT ·x509_SecTrustSettingsCopyCertificates_trampoline(SB),NOSPLIT,$0-0
-+	JMP x509_SecTrustSettingsCopyCertificates(SB)
++	JMP	x509_SecTrustSettingsCopyCertificates(SB)
 +TEXT ·x509_SecTrustSettingsCopyTrustSettings_trampoline(SB),NOSPLIT,$0-0
-+	JMP x509_SecTrustSettingsCopyTrustSettings(SB)
++	JMP	x509_SecTrustSettingsCopyTrustSettings(SB)
++TEXT ·x509_SecPolicyCopyProperties_trampoline(SB),NOSPLIT,$0-0
++	JMP	x509_SecPolicyCopyProperties(SB)

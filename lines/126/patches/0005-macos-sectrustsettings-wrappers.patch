@@ -1,22 +1,21 @@
+Restore the keychain trust-settings API that upstream Go removed in 1.26, as
+byte-for-byte Go code (Copyright The Go Authors, BSD-3-Clause, the same license
+as this file), so the keychain-union trust model can read trust settings the
+way Go 1.16/1.17 did:
 
-Restore the keychain trust-settings enumeration that upstream Go removed in 1.26.
+  - SecTrustSettingsDomain, SecTrustSettingsCopyCertificates,
+    SecTrustSettingsCopyTrustSettings, ErrNoTrustSettings, SecTrustSettingsResult
+    and the CF key strings -- Go 1.24:
+    https://github.com/golang/go/blob/go1.24.13/src/crypto/x509/internal/macos/security.go
+  - SecPolicyCopyProperties -- Go 1.18:
+    https://github.com/golang/go/blob/go1.18.10/src/crypto/x509/internal/macos/security.go
 
-Go 1.18 through 1.24 shipped SecTrustSettingsCopyCertificates /
-SecTrustSettingsCopyTrustSettings (with the SecTrustSettingsDomain type and the
-ErrNoTrustSettings / errSec* helpers) in crypto/x509/internal/macos; Go 1.26
-deleted this now-unused code in the platform-verifier cleanup. The
-keychain-union trust model needs it back (go118-124 still have it natively).
-
-The added declarations are taken VERBATIM from Go 1.24, so they are byte-for-byte
-Go's own code (Copyright The Go Authors, BSD-3-Clause -- the same license as this
-file). Compare against the upstream source to confirm they are identical:
-
-  https://github.com/golang/go/blob/go1.24.13/src/crypto/x509/internal/macos/security.go
-  (SecTrustSettingsDomain + the two SecTrustSettingsCopy* funcs, ~lines 46-118)
+The CF key string values were confirmed against the Security.framework symbols
+on OS X 10.9.5.
 
 --- src/crypto/x509/internal/macos/security.go.orig
 +++ src/crypto/x509/internal/macos/security.go
-@@ -145,3 +145,45 @@
+@@ -145,3 +145,83 @@
  	return CFRef(ret), nil
  }
  func x509_SecTrustCopyCertificateChain_trampoline()
@@ -62,3 +61,41 @@ file). Compare against the upstream source to confirm they are identical:
 +	return trustSettings, nil
 +}
 +func x509_SecTrustSettingsCopyTrustSettings_trampoline()
++
++// Restored from Go 1.24, which still had them:
++// https://github.com/golang/go/blob/go1.24.13/src/crypto/x509/internal/macos/security.go
++
++type SecTrustSettingsResult int32
++
++const (
++	SecTrustSettingsResultInvalid SecTrustSettingsResult = iota
++	SecTrustSettingsResultTrustRoot
++	SecTrustSettingsResultTrustAsRoot
++	SecTrustSettingsResultDeny
++	SecTrustSettingsResultUnspecified
++)
++
++// Dictionary keys are defined as build-time strings with CFSTR, but the Go
++// linker's internal linking mode can't handle CFSTR relocations. Create our
++// own dynamic strings instead and just never release them.
++//
++// Note that this might be the only thing that can break over time if
++// these values change, as the ABI arguably requires using the strings
++// pointed to by the symbols, not values that happen to be equal to them.
++
++var SecTrustSettingsResultKey = StringToCFString("kSecTrustSettingsResult")
++var SecTrustSettingsPolicy = StringToCFString("kSecTrustSettingsPolicy")
++var SecTrustSettingsPolicyString = StringToCFString("kSecTrustSettingsPolicyString")
++var SecPolicyOid = StringToCFString("SecPolicyOid")
++var SecPolicyAppleSSL = StringToCFString("1.2.840.113635.100.1.3") // defined by POLICYMACRO
++
++// Restored from Go 1.18:
++// https://github.com/golang/go/blob/go1.18.10/src/crypto/x509/internal/macos/security.go
++
++//go:cgo_import_dynamic x509_SecPolicyCopyProperties SecPolicyCopyProperties "/System/Library/Frameworks/Security.framework/Versions/A/Security"
++
++func SecPolicyCopyProperties(policy CFRef) CFRef {
++	ret := syscall(abi.FuncPCABI0(x509_SecPolicyCopyProperties_trampoline), uintptr(policy), 0, 0, 0, 0, 0)
++	return CFRef(ret)
++}
++func x509_SecPolicyCopyProperties_trampoline()

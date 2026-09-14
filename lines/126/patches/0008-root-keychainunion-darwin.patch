@@ -1,10 +1,14 @@
 
-Darwin integration for the keychain-union trust model: enumerate the SYSTEM and
-ADMIN keychain trust domains, build the union anchor pool via
-buildKeychainUnionPool, and install it into crypto/x509 at init. The USER domain
-is not read yet (issue #9); the belief that reading it could block on a
-SecurityAgent prompt was wrong -- that prompt guards writes, and reads were
-verified prompt-free on 10.9.5 in ssh, GUI, root and launchd-daemon contexts.
+Darwin integration for the keychain-union trust model: enumerate the USER,
+ADMIN and SYSTEM keychain trust domains with Keychain Access semantics -- user
+settings override admin settings, only settings for the SSL policy (or for all
+policies) count, hostname-restricted settings are skipped -- using Go
+1.16/1.17's own pure-Go enumeration
+(https://github.com/golang/go/blob/go1.17.13/src/crypto/x509/root_darwin.go,
+Copyright The Go Authors, BSD-style license), and build the union anchor pool
+via buildKeychainUnionPool. Reading the USER domain does not prompt: user trust
+settings live in a root-owned file securityd reads; the SecurityAgent prompt
+guards writes (verified on 10.9.5 in ssh, GUI, root and launchd contexts).
 
 Go's own verifier is the default; GODEBUG=x509usefallbackroots=0 selects
 Apple's, except below macOS 10.14, where this file still forces Go's verifier
@@ -14,29 +18,20 @@ CFArray with no retain callbacks. Passing the SecPolicyRef directly works on
 10.9.) @SSLDIR@ is substituted at build time with the toolchain's CA-bundle
 directory. All identifiers unexported.
 
-This revives the keychain-anchor enumeration Go's own crypto/x509 performed
-before its platform-verifier rewrite (reference: Go 1.13's
-crypto/x509/root_cgo_darwin.go); the logic is re-expressed here in the modern
-non-cgo trampoline style, not copied.
-
 --- src/crypto/x509/root_keychainunion_darwin.go.orig
 +++ src/crypto/x509/root_keychainunion_darwin.go
-@@ -0,0 +1,132 @@
+@@ -0,0 +1,254 @@
 +//go:build darwin
 +
 +package x509
 +
 +import (
 +	"crypto/x509/internal/macos"
++	"fmt"
 +	"os"
 +	"strconv"
 +	"strings"
 +)
-+
-+// Enumerate SYSTEM(2) and ADMIN(1). The USER domain(0) is not read yet (issue #9).
-+// Reading it does not prompt: user trust settings live in a root-owned file that
-+// securityd reads; the SecurityAgent prompt is for writing them.
-+var keychainUnionTrustDomains = []int{2, 1}
 +
 +// CA-bundle discovery mirrors root_bsd.go's certFiles, plus the toolchain's own
 +// CA-bundle path (@SSLDIR@ is substituted at build time).
@@ -48,52 +43,178 @@ non-cgo trampoline style, not copied.
 +	"/etc/ssl/cert.pem",
 +}
 +
++var keychainUnionDebug = strings.Contains(os.Getenv("GODEBUG"), "x509roots=1")
++
++// keychainUnionEnumerateKeychain lists every certificate that has trust settings in
++// the user, admin and system domains, with its effective result for the SSL policy.
++//
++// Adapted from Go 1.16/1.17's crypto/x509/root_darwin.go loadSystemRoots
++// (Copyright 2020 The Go Authors, BSD-style license):
++// https://github.com/golang/go/blob/go1.17.13/src/crypto/x509/root_darwin.go
++// Changes: returns entries for buildKeychainUnionPool instead of building a pool;
++// a domain that fails to enumerate is skipped instead of failing the whole load
++// (the CA bundle can still serve); identifiers prefixed.
 +func keychainUnionEnumerateKeychain() []keychainUnionTrustEntry {
 +	var out []keychainUnionTrustEntry
-+	for _, dom := range keychainUnionTrustDomains {
-+		certs, err := macos.SecTrustSettingsCopyCertificates(macos.SecTrustSettingsDomain(dom))
++
++	// macOS has three trust domains: one for CAs added by users to their
++	// "login" keychain, one for CAs added by Admins to the "System" keychain,
++	// and one for the CAs that ship with the OS.
++	for _, domain := range []macos.SecTrustSettingsDomain{
++		macos.SecTrustSettingsDomainUser,
++		macos.SecTrustSettingsDomainAdmin,
++		macos.SecTrustSettingsDomainSystem,
++	} {
++		certs, err := macos.SecTrustSettingsCopyCertificates(domain)
 +		if err != nil {
-+			continue // errSecNoTrustSettings etc. -> nothing in this domain
++			if keychainUnionDebug && err != macos.ErrNoTrustSettings {
++				fmt.Fprintf(os.Stderr, "crypto/x509: domain %d: %v\n", domain, err)
++			}
++			continue
 +		}
-+		n := macos.CFArrayGetCount(certs)
-+		for i := 0; i < n; i++ {
-+			certRef := macos.CFArrayGetValueAtIndex(certs, i)
-+			der, err := macos.SecCertificateCopyData(certRef)
++
++		for i := 0; i < macos.CFArrayGetCount(certs); i++ {
++			c := macos.CFArrayGetValueAtIndex(certs, i)
++			der, err := macos.SecCertificateCopyData(c)
 +			if err != nil {
++				if keychainUnionDebug {
++					fmt.Fprintf(os.Stderr, "crypto/x509: domain %d, certificate #%d: %v\n", domain, i, err)
++				}
 +				continue
 +			}
-+			out = append(out, keychainUnionTrustEntry{der: der, result: keychainUnionTrustResult(certRef, dom)})
++
++			var result macos.SecTrustSettingsResult
++			if domain == macos.SecTrustSettingsDomainSystem {
++				// Certs found in the system domain are always trusted. If the user
++				// configures "Never Trust" on such a cert, it will also be found in the
++				// admin or user domain, causing it to be added to the distrust set.
++				result = macos.SecTrustSettingsResultTrustRoot
++			} else {
++				result, err = keychainUnionSSLTrustSettingsResult(c)
++				if err != nil {
++					if keychainUnionDebug {
++						fmt.Fprintf(os.Stderr, "crypto/x509: domain %d, certificate #%d trust settings: %v\n", domain, i, err)
++					}
++					continue
++				}
++				if keychainUnionDebug {
++					fmt.Fprintf(os.Stderr, "crypto/x509: domain %d, certificate #%d trust settings: %d\n", domain, i, result)
++				}
++			}
++			out = append(out, keychainUnionTrustEntry{der: der, result: int(result)})
 +		}
 +		macos.CFRelease(certs)
 +	}
 +	return out
 +}
 +
-+// keychainUnionTrustResult reads kSecTrustSettingsResult for cert in domain. An empty
-+// settings array == trust-as-root; a settings entry without an explicit result
-+// also defaults to trust-as-root. Key access confirmed by spike: the constant is
-+// a CFSTR literal, so StringToCFString("kSecTrustSettingsResult") is the key.
-+func keychainUnionTrustResult(cert macos.CFRef, domain int) int {
-+	settings, err := macos.SecTrustSettingsCopyTrustSettings(cert, macos.SecTrustSettingsDomain(domain))
-+	if err != nil {
-+		return keychainUnionTrustUnspec
++// keychainUnionSSLTrustSettingsResult obtains the final kSecTrustSettingsResult value for a
++// certificate in the user or admin domain, combining usage constraints for the
++// SSL SecTrustSettingsPolicy,
++//
++// It ignores SecTrustSettingsKeyUsage and kSecTrustSettingsAllowedError, and
++// doesn't support kSecTrustSettingsDefaultRootCertSetting.
++//
++// https://developer.apple.com/documentation/security/1400261-sectrustsettingscopytrustsetting
++func keychainUnionSSLTrustSettingsResult(cert macos.CFRef) (macos.SecTrustSettingsResult, error) {
++	// In Apple's implementation user trust settings override admin trust settings
++	// (which themselves override system trust settings). If SecTrustSettingsCopyTrustSettings
++	// fails, or returns a NULL trust settings, when looking for the user trust
++	// settings then fallback to checking the admin trust settings.
++	//
++	// See Security-59306.41.2/trust/headers/SecTrustSettings.h for a description of
++	// the trust settings overrides, and SecLegacyAnchorSourceCopyUsageConstraints in
++	// Security-59306.41.2/trust/trustd/SecCertificateSource.c for a concrete example
++	// of how Apple applies the override in the case of NULL trust settings, or non
++	// success errors.
++	trustSettings, err := macos.SecTrustSettingsCopyTrustSettings(cert, macos.SecTrustSettingsDomainUser)
++	if err != nil || trustSettings == 0 {
++		if keychainUnionDebug && err != macos.ErrNoTrustSettings {
++			fmt.Fprintf(os.Stderr, "crypto/x509: SecTrustSettingsCopyTrustSettings for SecTrustSettingsDomainUser failed: %s\n", err)
++		}
++		trustSettings, err = macos.SecTrustSettingsCopyTrustSettings(cert, macos.SecTrustSettingsDomainAdmin)
 +	}
-+	defer macos.CFRelease(settings)
-+	n := macos.CFArrayGetCount(settings)
-+	if n == 0 {
-+		return keychainUnionTrustRoot
++	if err != nil || trustSettings == 0 {
++		// If there are neither user nor admin trust settings for a certificate returned
++		// from SecTrustSettingsCopyCertificates Apple returns kSecTrustSettingsResultInvalid,
++		// as this method is intended to return certificates _which have trust settings_.
++		// The most likely case for this being triggered is that the existing trust settings
++		// are invalid and cannot be properly parsed. In this case SecTrustSettingsCopyTrustSettings
++		// returns errSecInvalidTrustSettings. The existing cgo implementation returns
++		// kSecTrustSettingsResultUnspecified in this case, which mostly matches the Apple
++		// implementation because we don't do anything with certificates marked with this
++		// result.
++		//
++		// See SecPVCGetTrustSettingsResult in Security-59306.41.2/trust/trustd/SecPolicyServer.c
++		if keychainUnionDebug && err != macos.ErrNoTrustSettings {
++			fmt.Fprintf(os.Stderr, "crypto/x509: SecTrustSettingsCopyTrustSettings for SecTrustSettingsDomainAdmin failed: %s\n", err)
++		}
++		return macos.SecTrustSettingsResultUnspecified, nil
 +	}
-+	key := macos.StringToCFString("kSecTrustSettingsResult")
-+	defer macos.CFRelease(macos.CFRef(key))
-+	for i := 0; i < n; i++ {
-+		dict := macos.CFArrayGetValueAtIndex(settings, i)
-+		if v, ok := macos.CFDictionaryGetValueIfPresent(dict, key); ok {
-+			if r, err := macos.CFNumberGetValue(v); err == nil {
-+				return int(r)
++	defer macos.CFRelease(trustSettings)
++
++	// "An empty trust settings array means 'always trust this certificate' with an
++	// overall trust setting for the certificate of kSecTrustSettingsResultTrustRoot."
++	if macos.CFArrayGetCount(trustSettings) == 0 {
++		return macos.SecTrustSettingsResultTrustRoot, nil
++	}
++
++	isSSLPolicy := func(policyRef macos.CFRef) bool {
++		properties := macos.SecPolicyCopyProperties(policyRef)
++		defer macos.CFRelease(properties)
++		if v, ok := macos.CFDictionaryGetValueIfPresent(properties, macos.SecPolicyOid); ok {
++			return macos.CFEqual(v, macos.CFRef(macos.SecPolicyAppleSSL))
++		}
++		return false
++	}
++
++	for i := 0; i < macos.CFArrayGetCount(trustSettings); i++ {
++		tSetting := macos.CFArrayGetValueAtIndex(trustSettings, i)
++
++		// First, check if this trust setting is constrained to a non-SSL policy.
++		if policyRef, ok := macos.CFDictionaryGetValueIfPresent(tSetting, macos.SecTrustSettingsPolicy); ok {
++			if !isSSLPolicy(policyRef) {
++				continue
 +			}
 +		}
++
++		// Then check if it is restricted to a hostname, so not a root.
++		if _, ok := macos.CFDictionaryGetValueIfPresent(tSetting, macos.SecTrustSettingsPolicyString); ok {
++			continue
++		}
++
++		cfNum, ok := macos.CFDictionaryGetValueIfPresent(tSetting, macos.SecTrustSettingsResultKey)
++		// "If this key is not present, a default value of kSecTrustSettingsResultTrustRoot is assumed."
++		if !ok {
++			return macos.SecTrustSettingsResultTrustRoot, nil
++		}
++		result, err := macos.CFNumberGetValue(cfNum)
++		if err != nil {
++			return 0, err
++		}
++
++		// If multiple dictionaries match, we are supposed to "OR" them,
++		// the semantics of which are not clear. Since TrustRoot and TrustAsRoot
++		// are mutually exclusive, Deny should probably override, and Invalid and
++		// Unspecified be overridden, approximate this by stopping at the first
++		// TrustRoot, TrustAsRoot or Deny.
++		switch r := macos.SecTrustSettingsResult(result); r {
++		case macos.SecTrustSettingsResultTrustRoot,
++			macos.SecTrustSettingsResultTrustAsRoot,
++			macos.SecTrustSettingsResultDeny:
++			return r, nil
++		}
 +	}
-+	return keychainUnionTrustRoot
++
++	// If trust settings are present, but none of them match the policy...
++	// the docs don't tell us what to do.
++	//
++	// "Trust settings for a given use apply if any of the dictionaries in the
++	// certificate’s trust settings array satisfies the specified use." suggests
++	// that it's as if there were no trust settings at all, so we should maybe
++	// fallback to the admin trust settings? TODO(golang.org/issue/38888).
++
++	return macos.SecTrustSettingsResultUnspecified, nil
 +}
 +
 +// keychainUnionReadDirNames lists a directory's entry names (for SSL_CERT_DIR).
