@@ -31,10 +31,10 @@ GitHub Releases. Ships as `golang-<gover>-native-mavericks.<rev>.pkg` and
     with none, `apply-patches.sh` falls back to the newest lower line and applies with fuzz
     (`patch -p0 -F 3`), so a new Go minor gets a real chance to just work. If it does and the gates
     pass, ship-if-green ships it; if not, write `lines/<n>/patches/`.
-  - The gates are what make that safe, not the fuzz: patches 0005–0010 are the keychain-union trust
-    model in `src/crypto/x509`, exactly where Go churns between minors. A fuzzy apply can succeed and
-    be wrong — that is what `tests/trust/` and the compat guard are for. **Never relax those to make a
-    new line green.**
+  - The gates are what make that safe, not the fuzz: patches 0005–0010 and 0013–0015 are the
+    keychain-union trust model in `src/crypto/x509`, exactly where Go churns between minors. A fuzzy
+    apply can succeed and be wrong — that is what `tests/trust/` and the compat guard are for. **Never
+    relax those to make a new line green.**
 - Upstream Go version lives in `lines/<line>/UPSTREAM_VERSION` (bare `x.y.z`, Renovate-managed). `build/version.sh
   <auto|local>` derives the full `<upstream>-mavericks.N` + a `RELEASE=yes/no` decision from
   existing `*-mavericks.*` tags: `auto` is `N=1`/`RELEASE=yes` for a new upstream (no tag yet),
@@ -61,7 +61,12 @@ GitHub Releases. Ships as `golang-<gover>-native-mavericks.<rev>.pkg` and
   route through the min-10.9 CC wrapper — Go 1.26 internal-links them to a 12.0 floor otherwise.
   `link-recipe.sh` (the old `-extldflags`/`GO_EXTLINK_ENABLED` plumbing) is gone; the CC wrappers
   inject the shim directly. [[mavericks-go126-downstream-linking]]
-- **Distrust acceptance uses LE's pinned `valid-isrgrootx1/x2` endpoints**, not public sites. [[mavericks-trust-test-endpoints]]
+- **The trust model:** crypto/x509's system roots on darwin are the keychain union — all three trust
+  domains read with Go 1.17's precedence- and policy-aware code, ∪ the CA bundle, minus distrust —
+  served lazily by `loadSystemRoots` (patches 0005–0010, 0013–0015). `GODEBUG=x509usefallbackroots=0`
+  selects Apple's verifier, which works on 10.9: its crash was Go passing a NULL-callback CFArray of
+  policies. Reading the USER domain never prompts (the prompt guards writes). Acceptance:
+  `tests/trust/acceptance-onbox.sh` + the semi-manual steps in `smoke-trust.sh`.
 - **Sparkle updater + EdDSA keys** (private key = `SPARKLE_PRIVATE_KEY` secret). [[mavericks-go126-sparkle-updater]]
 - **Renovate's Go patch auto-release trusts go.dev's feed-verified sha256** (`build/fetch-go.sh`,
   `build/go-src-sha256.sh`), not a pinned checksum, and requires no PAT/App token — deliberately,
