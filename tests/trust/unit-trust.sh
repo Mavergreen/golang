@@ -24,9 +24,16 @@ sh "$here/../../build/apply-patches.sh"
 out=$(GOROOT="$WORK/go" "$WORK/go/bin/go" test crypto/x509 -run 'KeychainUnion|Fallback' -count=1 -v 2>&1)
 printf '%s\n' "$out"
 printf '%s\n' "$out" | grep -q '^ok[[:space:]]' || { echo "FATAL: crypto/x509 trust tests did not pass" >&2; exit 1; }
+# On CI a skipped trust test is a failure: the Apple-verifier tests skip only when the host's
+# keychain doesn't trust the fixture, and CI's macOS does, so a skip there hides a broken path.
+# Subtests print indented, so match any leading space.
+if [ -n "${CI:-}" ]; then
+  skipped=$(printf '%s\n' "$out" | grep -E '^[[:space:]]*--- SKIP: Test[A-Za-z_]*KeychainUnion' || true)
+  [ -z "$skipped" ] || { printf 'FATAL: KeychainUnion tests skipped on CI (they must run):\n%s\n' "$skipped" >&2; exit 1; }
+fi
 passed=$(printf '%s\n' "$out" | grep -c '^--- PASS: Test[A-Za-z_]*KeychainUnion')
-# 9 portable + at least the 3 darwin tests that never skip (SetFallbackRoots x2, native opt-out).
-[ "$passed" -ge 12 ] || { echo "FATAL: expected >=12 KeychainUnion tests to run+pass, saw $passed -- did -run match nothing?" >&2; exit 1; }
+# Top-level tests only: 9 portable + 6 darwin, all of which run on CI (the skip guard above).
+[ "$passed" -ge 15 ] || { echo "FATAL: expected >=15 KeychainUnion tests to run+pass, saw $passed -- did -run match nothing?" >&2; exit 1; }
 for t in TestFallback TestFallbackPanic; do
   printf '%s\n' "$out" | grep -q "^--- PASS: $t " || { echo "FATAL: upstream $t did not pass" >&2; exit 1; }
 done

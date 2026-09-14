@@ -2,11 +2,16 @@ Darwin tests for the keychain-union trust model: SetFallbackRoots neither panics
 nor displaces the union (unless GODEBUG=x509usefallbackroots=1, as upstream);
 GODEBUG=x509usefallbackroots=0 selects Apple's verifier; and Apple's verifier,
 driven through the calls that exist on older macOS, maps its results to Go's
-typed errors and returns the chain.
+typed errors and returns the chain. Those Apple-verifier tests skip only when an
+independent probe -- the non-forced systemVerify on the fixture -- says the
+host's keychain doesn't trust it; once it does, any error from the path under
+test fails. On 10.15+ (CI) that probe runs the modern calls, so a broken
+legacy path fails rather than skips; below 10.15 the probe is legacy too, and
+the on-box acceptance script is the gate.
 
 --- src/crypto/x509/root_keychainunion_darwin_test.go.orig
 +++ src/crypto/x509/root_keychainunion_darwin_test.go
-@@ -0,0 +1,188 @@
+@@ -0,0 +1,215 @@
 +//go:build darwin
 +
 +package x509
@@ -154,23 +159,47 @@ typed errors and returns the chain.
 +	return certs[0], inters
 +}
 +
++// keychainUnionHostTrustsFixture reports whether this host's Apple verifier accepts the
++// fixture at a time inside its validity, probed through the NON-forced systemVerify. It is
++// the only reason a legacy-path test may skip: once the host trusts the fixture, any error
++// from the path under test is a failure, so a broken legacy path cannot pass as a skip.
++//
++// On macOS 10.15+ (CI) the non-forced path is the modern API, so this probe is independent
++// of the legacy code. Below 10.15 the non-forced path is the legacy one too, so a broken
++// legacy path would skip here; on those hosts the on-box acceptance script
++// (tests/trust/acceptance-onbox.sh) is the gate.
++func keychainUnionHostTrustsFixture(t *testing.T) bool {
++	t.Helper()
++	saved := keychainUnionForceLegacySecTrust
++	keychainUnionForceLegacySecTrust = false
++	defer func() { keychainUnionForceLegacySecTrust = saved }()
++	leaf, inters := keychainUnionFixture(t)
++	opts := &VerifyOptions{DNSName: leaf.DNSNames[0], Intermediates: inters, CurrentTime: leaf.NotBefore.Add(24 * time.Hour)}
++	if _, err := leaf.systemVerify(opts); err != nil {
++		t.Logf("probe: this host's Apple verifier does not accept the fixture: %v", err)
++		return false
++	}
++	return true
++}
++
 +// Apple's verifier, through the older-macOS calls (forced) and through whatever this macOS
-+// selects (auto). Skips when the host's keychain doesn't trust ISRG Root X1.
++// selects (auto). Skips only when keychainUnionHostTrustsFixture says the host doesn't trust
++// the fixture's root (ISRG Root X1).
 +func TestKeychainUnionSystemVerifyVerifiesChain(t *testing.T) {
 +	for _, legacy := range []bool{true, false} {
 +		name := map[bool]string{true: "legacy", false: "auto"}[legacy]
 +		t.Run(name, func(t *testing.T) {
++			if !keychainUnionHostTrustsFixture(t) {
++				t.Skip("this host's keychain does not trust the fixture's root")
++			}
 +			if legacy {
 +				keychainUnionForceLegacy(t)
 +			}
 +			leaf, inters := keychainUnionFixture(t)
 +			opts := &VerifyOptions{DNSName: leaf.DNSNames[0], Intermediates: inters, CurrentTime: leaf.NotBefore.Add(24 * time.Hour)}
 +			chains, err := leaf.systemVerify(opts)
-+			if _, ok := err.(UnknownAuthorityError); ok {
-+				t.Skipf("this host's keychain does not trust the fixture's root: %v", err)
-+			}
 +			if err != nil {
-+				t.Fatal(err)
++				t.Fatalf("the host trusts the fixture, but systemVerify failed: %v", err)
 +			}
 +			if len(chains) != 1 || len(chains[0]) < 2 || !chains[0][0].Equal(leaf) {
 +				t.Fatalf("unexpected chains: %v", chains)
@@ -180,11 +209,14 @@ typed errors and returns the chain.
 +}
 +
 +func TestKeychainUnionLegacySecTrustTypedErrors(t *testing.T) {
++	if !keychainUnionHostTrustsFixture(t) {
++		t.Skip("this host's keychain does not trust the fixture's root")
++	}
 +	keychainUnionForceLegacy(t)
 +	leaf, inters := keychainUnionFixture(t)
 +	inside := leaf.NotBefore.Add(24 * time.Hour)
 +	if _, err := leaf.systemVerify(&VerifyOptions{DNSName: leaf.DNSNames[0], Intermediates: inters, CurrentTime: inside}); err != nil {
-+		t.Skipf("fixture does not verify on this host: %v", err)
++		t.Fatalf("the host trusts the fixture, but the legacy path failed on it: %v", err)
 +	}
 +	_, err := leaf.systemVerify(&VerifyOptions{DNSName: "wrong.keychainunion.test", Intermediates: inters, CurrentTime: inside})
 +	if _, ok := err.(HostnameError); !ok {
