@@ -1,13 +1,23 @@
 
-Cross-platform unit tests for buildKeychainUnionPool: a Deny'd keychain root is
-excluded from the anchor pool and recorded in the distrust set (a leaf must
-fail to verify against it), while a TrustRoot keychain root is admitted as an
-anchor (a leaf verifies against it). Uses a locally generated self-signed root
-and leaf, so it needs no build constraint and no real keychain.
+Cross-platform unit tests for the keychain-union trust model, over locally
+generated roots, intermediates and leaves, so they need no build constraint
+and no real keychain:
+  - buildKeychainUnionPool: a Deny'd root is excluded from the anchor pool and
+    recorded in the distrust set; TrustRoot anchors only a self-signed root and
+    TrustAsRoot only a non-self-signed certificate; Unspecified and Invalid
+    anchor nothing;
+  - distrust beats the CA bundle: a Deny'd root is not anchored because a
+    bundle file also carries it, and the same certificate enumerated as both
+    TrustRoot and Deny (in either order) is distrusted and not anchored --
+    both with the verify-time veto off, so anchor exclusion is tested alone;
+  - a root found only in a bundle file is anchored;
+  - the verify-time veto rejects a chain through a distrusted intermediate
+    that also chains to a trusted root;
+  - keychainUnionResolveBundlePaths honors SSL_CERT_FILE and SSL_CERT_DIR.
 
 --- src/crypto/x509/root_keychainunion_test.go.orig
 +++ src/crypto/x509/root_keychainunion_test.go
-@@ -0,0 +1,231 @@
+@@ -0,0 +1,268 @@
 +package x509
 +
 +import (
@@ -237,5 +247,42 @@ and leaf, so it needs no build constraint and no real keychain.
 +	pool, _ := buildKeychainUnionPool([]keychainUnionTrustEntry{{der: root.Raw, result: keychainUnionTrustDeny}}, []string{bundle})
 +	if _, err := leaf.Verify(VerifyOptions{Roots: pool, CurrentTime: time.Now()}); err == nil {
 +		t.Fatal("a keychain-distrusted root was anchored via the CA bundle")
++	}
++}
++
++// The same certificate DER enumerated as both TrustRoot and Deny -- e.g. trusted in one
++// keychain domain and distrusted in another, the input shape of
++// github.com/ModernMavericks/golang/issues/9. Deny wins whichever entry comes first, even
++// with the CA bundle also carrying the root and the verify-time veto switched off.
++func TestKeychainUnionDenyBeatsTrustRootForSameCert(t *testing.T) {
++	saved := keychainUnionDistrusted
++	keychainUnionDistrusted = nil
++	defer func() { keychainUnionDistrusted = saved }()
++
++	for _, tt := range []struct {
++		name    string
++		results []int
++	}{
++		{"TrustRoot then Deny", []int{keychainUnionTrustRoot, keychainUnionTrustDeny}},
++		{"Deny then TrustRoot", []int{keychainUnionTrustDeny, keychainUnionTrustRoot}},
++	} {
++		t.Run(tt.name, func(t *testing.T) {
++			root, leaf := keychainUnionTestChain(t)
++			bundle := t.TempDir() + "/ca.pem"
++			if err := os.WriteFile(bundle, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: root.Raw}), 0o644); err != nil {
++				t.Fatal(err)
++			}
++			var entries []keychainUnionTrustEntry
++			for _, r := range tt.results {
++				entries = append(entries, keychainUnionTrustEntry{der: root.Raw, result: r})
++			}
++			pool, distrust := buildKeychainUnionPool(entries, []string{bundle})
++			if !distrust[keychainUnionFingerprint(root.Raw)] {
++				t.Error("the root is missing from the distrust set")
++			}
++			if _, err := leaf.Verify(VerifyOptions{Roots: pool, CurrentTime: time.Now()}); err == nil {
++				t.Error("a root that is both TrustRoot and Deny was anchored")
++			}
++		})
 +	}
 +}

@@ -32,8 +32,8 @@ if [ -n "${CI:-}" ]; then
   [ -z "$skipped" ] || { printf 'FATAL: KeychainUnion tests skipped on CI (they must run):\n%s\n' "$skipped" >&2; exit 1; }
 fi
 passed=$(printf '%s\n' "$out" | grep -c '^--- PASS: Test[A-Za-z_]*KeychainUnion')
-# Top-level tests only: 9 portable + 6 darwin, all of which run on CI (the skip guard above).
-[ "$passed" -ge 15 ] || { echo "FATAL: expected >=15 KeychainUnion tests to run+pass, saw $passed -- did -run match nothing?" >&2; exit 1; }
+# Top-level tests only: 10 portable + 6 darwin, all of which run on CI (the skip guard above).
+[ "$passed" -ge 16 ] || { echo "FATAL: expected >=16 KeychainUnion tests to run+pass, saw $passed -- did -run match nothing?" >&2; exit 1; }
 for t in TestFallback TestFallbackPanic; do
   printf '%s\n' "$out" | grep -q "^--- PASS: $t " || { echo "FATAL: upstream $t did not pass" >&2; exit 1; }
 done
