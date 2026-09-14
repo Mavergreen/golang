@@ -8,9 +8,12 @@ import (
 )
 
 // Usage: verify_tls [url]
-// Default target chains to ISRG Root X1. Let's Encrypt's pinned endpoints
-// valid-isrgrootx1/x2.letsencrypt.org chain to exactly one root, which makes
-// them deterministic distrust targets regardless of CA-hierarchy churn.
+// The default target is Let's Encrypt's per-root test endpoint for ISRG Root X1.
+// valid-isrgrootx1/x2.letsencrypt.org are the test endpoints Let's Encrypt keeps
+// for each of its roots, which makes them stable distrust targets. The chain they
+// serve still follows the CA hierarchy: valid-isrgrootx1 currently chains
+// leaf -> YR2 -> ISRG Root YR (cross-signed) -> ISRG Root X1, so a CA bundle that
+// carries Root YR as a self-signed root can anchor it without X1.
 func main() {
 	url := "https://valid-isrgrootx1.letsencrypt.org/"
 	if len(os.Args) > 1 {

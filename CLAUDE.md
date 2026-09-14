@@ -65,8 +65,9 @@ GitHub Releases. Ships as `golang-<gover>-native-mavericks.<rev>.pkg` and
   domains read with Go 1.17's precedence- and policy-aware code, ∪ the CA bundle, minus distrust —
   served lazily by `loadSystemRoots` (patches 0005–0010, 0013–0015). `GODEBUG=x509usefallbackroots=0`
   selects Apple's verifier, which works on 10.9: its crash was Go passing a NULL-callback CFArray of
-  policies. Reading the USER domain never prompts (the prompt guards writes). Acceptance:
-  `tests/trust/acceptance-onbox.sh` + the semi-manual steps in `smoke-trust.sh`.
+  policies. Reading the USER domain doesn't prompt in any context tested (a locked login keychain is
+  untested; the prompt guards writes). Acceptance: `tests/trust/acceptance-onbox.sh` + the
+  semi-manual steps in `smoke-trust.sh`.
 - **Sparkle updater + EdDSA keys** (private key = `SPARKLE_PRIVATE_KEY` secret). [[mavericks-go126-sparkle-updater]]
 - **Renovate's Go patch auto-release trusts go.dev's feed-verified sha256** (`build/fetch-go.sh`,
   `build/go-src-sha256.sh`), not a pinned checksum, and requires no PAT/App token — deliberately,

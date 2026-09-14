@@ -1,6 +1,7 @@
 // capture prints the certificate chain a TLS server presents, as PEM. It does NOT verify:
 // the output is test material (fixtures, certificates to import in Keychain Access).
-//   usage: cd tests/trust/capture && go run . <host>
+//
+//	usage: cd tests/trust/capture && go run . <host>
 package main
 
 import (
