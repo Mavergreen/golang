@@ -27,7 +27,7 @@ if [ -d "$UPD_APP" ]; then
     --scripts-out "$scr"
   set -- --scripts "$scr"
 else
-  echo ">> WARNING: no updater at $UPD_APP; packaging toolchain only (build it: cmake --build)" >&2
+  echo ">> WARNING: no updater at $UPD_APP; packaging toolchain only (build it: shipyard-cmake --build)" >&2
 fi
 
 # Install resources (welcome + Go license shown at install).
