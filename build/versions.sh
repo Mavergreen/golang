@@ -2,12 +2,14 @@
 # Single source of truth for every pinned input. Sourced, not executed.
 : "${REPO_ROOT:=$(cd "$(dirname "$0")/.." && pwd)}"
 export REPO_ROOT
-# Heavy build I/O (Go source tree, compiled toolchain) must live on a LOCAL
-# disk: this repo is on an NFS mount (ap-juicer:/export/code/trees), where
-# extracting Go's ~13k source files crawls. Default to the local cache; the
-# durable bits (patches, scripts, manifests) stay in the NFS repo. Override
-# with MAVERICKS_WORK. On CI, $HOME/.cache is a fine local path too.
-export WORK="${MAVERICKS_WORK:-$HOME/.cache/mavericks-golang/work}"
+# platform: a family checkout may live on NFS, where a build cost 11.16s wall / 25% CPU against
+# 2.96s / 88% on local disk, with identical user time -- the whole difference is I/O wait.
+: "${MAVERICKS_BUILD_ROOT:=${TMPDIR:-/tmp}/mm-build}"
+export MAVERICKS_BUILD_ROOT
+# MAVERICKS_WORK still wins when set (build/patch-worktree.sh gives itself a private one so a build
+# never clobbers edits); otherwise the build lands under MAVERICKS_BUILD_ROOT, out of this NFS-mounted
+# tree entirely. MAVERICKS_BUILD_ROOT="$PWD" is the deliberate in-tree escape hatch.
+export WORK="${MAVERICKS_WORK:-$MAVERICKS_BUILD_ROOT/golang-native}"
 
 # Package version, shaped like ../mavericks-swift's VERSION: <upstream>-mavericks.<rev>
 # (e.g. 1.26.4-mavericks.1). A packaging-only re-release (patch/recipe changes, independent

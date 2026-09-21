@@ -1,10 +1,14 @@
 # Not committed: brainstorm/spec docs and other non-code notes (tracked out-of-band)
 docs/
 
-# Build outputs / fetched inputs. Heavy build I/O (WORK) defaults to a LOCAL disk
-# (~/.cache/mavericks-golang/work), OUTSIDE this NFS repo — see build/versions.sh.
-# build/work/ is kept only in case WORK is ever overridden back into the tree.
+# Build outputs / fetched inputs. Heavy build I/O (WORK) defaults under $MAVERICKS_BUILD_ROOT
+# (${TMPDIR}/mm-build by default), OUTSIDE this NFS repo — see build/versions.sh. The entries below
+# catch MAVERICKS_BUILD_ROOT's deliberate in-tree escape hatch (MAVERICKS_BUILD_ROOT="$PWD"); build/work/
+# is kept only in case MAVERICKS_WORK is ever overridden back into the tree by its own, older name.
 build/work/
+/golang-native/
+/golang-updater/
+/golang-updater-cross/
 *.pkg
 *.tar.gz
 *.a
