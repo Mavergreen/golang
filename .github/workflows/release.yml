@@ -117,6 +117,9 @@ jobs:
         # config auto-scaffolds our .github/renovate.json. Consumed via find_package + versions.sh's SHIPYARD_SCRIPTS.
         uses: ModernMavericks/shipyard/.github/actions/install@v1
 
+      - name: Record the pre-build tree
+        run: sh "$SHIPYARD_SCRIPTS/assert-tree-clean.sh" --record
+
       # The plan job already decided this line's version; take it rather than recomputing, so every
       # job in the run agrees about what is being built. VERSION is written locally (never committed)
       # because the cmake configure and the updater bundle read it.
@@ -198,6 +201,9 @@ jobs:
 
       - name: Package the cross .pkg + tarball + manifest
         run: UPD_APP="build/updater-cross/GoCrossUpdater.app" sh build/package-cross-pkg.sh
+
+      - name: The build must not have written into the source tree
+        run: sh "$SHIPYARD_SCRIPTS/assert-tree-clean.sh"
 
       # The body travels IN the artifact: publish-release.yml does not check out the repo. One call
       # writes the file both sign_and_appcast.sh invocations below (native + cross) and the Release
