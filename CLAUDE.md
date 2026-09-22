@@ -75,7 +75,7 @@ GitHub Releases. Ships as `golang-<gover>-native-mavericks.<rev>.pkg` and
 - **Renovate's Go patch auto-release trusts go.dev's feed-verified sha256** (`build/fetch-go.sh`,
   `build/go-src-sha256.sh`), not a pinned checksum, and requires no PAT/App token — deliberately,
   so don't add one.
-- Apple `/usr/bin/clang` required for cgo/ObjC. Reuse `../mavericks-shipyard`; don't duplicate.
+- Apple `/usr/bin/clang` required for cgo/ObjC. Reuse `../mavergreen-shipyard`; don't duplicate.
 
 ## Design docs
 
