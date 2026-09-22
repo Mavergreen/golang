@@ -37,9 +37,8 @@ if(MAVGO_VARIANT STREQUAL "native")
   set(_name       GoUpdater)
   set(_product    "Mavericks Go ${MAVGO_MINOR}")
   set(_bundle     dev.modernmavericks.GoUpdater)
-  # Per-LINE feed, not /latest/: the repo's latest release may belong to another line, which would
-  # offer a 1.26 user a 1.27 upgrade unasked -- and, once 1.26.7 ships after 1.27.0, would leave
-  # 1.27 users seeing nothing at all (Sparkle never offers a lower version, so it stalls).
+  # Per-LINE feed, not /latest/: installed updaters poll `feed-126`, so the URL must never
+  # change. A future Go line lives in its own repo with its own feed, not a second line here.
   set(_feed       "https://github.com/ModernMavericks/golang/releases/download/feed-${MAVGO_LINE}/appcast.xml")
   set(_logprefix  "MavGoUpdater")
   set(_confirmbody "The Go toolchain in /usr/local/go${MAVGO_LINE} was updated.")

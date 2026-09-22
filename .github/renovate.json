@@ -24,7 +24,7 @@
         "/^NEXT-LINE-WATCH$/"
       ],
       "matchStrings": [
-        "LATEST_GO=(?<currentValue>.+?)\\s*$"
+        "LATEST_GO=(?<currentValue>[0-9][0-9.]*)"
       ],
       "depNameTemplate": "go-latest",
       "packageNameTemplate": "go",

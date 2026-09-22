@@ -324,11 +324,10 @@ jobs:
       version: ${{ needs.plan.outputs.version }}
       artifact: golang-go${{ needs.plan.outputs.line }}
 
-  # The per-line UPDATE FEED. Sparkle installs poll a fixed URL, so it cannot be the repo's /latest/
-  # release -- that follows whichever LINE published most recently, which would offer a 1.26 user a
-  # 1.27 upgrade unasked and, once 1.26.7 ships after 1.27.0, leave 1.27 users seeing nothing at all.
-  # Instead each line owns a `feed-<line>` release whose appcast assets are replaced on every publish
-  # in that line. It is a prerelease so it stays out of the way of the real releases.
+  # The per-line UPDATE FEED. Installed updaters poll a fixed `feed-126` URL, so it must never
+  # change; a future Go line lives in its own repo with its own feed, not a second line here.
+  # Its appcast assets are replaced on every publish. It is a prerelease so it stays out of the
+  # way of the real releases.
   feed:
     needs: [plan, publish]
     if: needs.plan.outputs.any_publish == 'true'

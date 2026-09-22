@@ -6,7 +6,7 @@
 #
 # When the bump crosses a MINOR (1.26.x -> 1.27.0), that is the signal to decide whether to create
 # ModernMavericks/golang-127. See the commits that retired lines/ and made this repo ship one line
-# from the root (fae9e3f "refactor: retire lines/, ship one line from the repo root" and ec77028
+# from the root ("refactor: retire lines/, ship one line from the repo root" and ec77028
 # "ci: build one line, not a matrix -- unblock the stuck Renovate PRs"); docs/ is gitignored here
 # and not present in a clone.
 # Merging the PR records that you have seen it; it changes nothing about what this repo builds.

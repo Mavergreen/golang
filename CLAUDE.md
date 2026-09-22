@@ -29,7 +29,7 @@ GitHub Releases. Ships as `golang-<gover>-native-mavericks.<rev>.pkg` and
   - **A new Go minor line is a NEW REPO** (`ModernMavericks/golang-127`), forked from this one — not a
     second directory here. It inherits this repo's `patches/` as its starting point. `docs/` is
     gitignored here (tracked out-of-band, not present in a clone) — for why, see the commits that
-    made it so: fae9e3f ("refactor: retire lines/, ship one line from the repo root") and ec77028
+    made it so: "refactor: retire lines/, ship one line from the repo root" and ec77028
     ("ci: build one line, not a matrix — unblock the stuck Renovate PRs"). This repo's Renovate cap
     (`allowedVersions: "<1.27"` on `go-126`) is what keeps this repo on 1.26.x so it can never drift
     onto the next line by itself. `NEXT-LINE-WATCH` is the uncapped Renovate tracker for this: its PR
@@ -81,4 +81,5 @@ GitHub Releases. Ships as `golang-<gover>-native-mavericks.<rev>.pkg` and
 ## Design docs
 
 `docs/superpowers/specs/2026-07-18-*.md` (spec) and `docs/superpowers/plans/2026-07-18-*.md`
-(implementation plan). The `2026-07-14` spec is the older umbrella vision.
+(implementation plan) — `docs/` is gitignored here (tracked out-of-band, not present in a clone).
+The `2026-07-14` spec is the older umbrella vision.

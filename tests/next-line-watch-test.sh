@@ -28,8 +28,8 @@ fi
 # ARRAY ORDER, with a later matching rule overriding an earlier one for the same property, so
 # "some matched rule says automerge:false" is not enough -- a later rule could still flip it back
 # to true. What matters is the LAST matched rule that mentions automerge at all.
-python3 - "$R/.github/renovate.json" <<'PY' || exit 1
-import json, sys
+python3 - "$R/.github/renovate.json" "$w" "$got" <<'PY' || exit 1
+import json, re, sys
 cfg = json.load(open(sys.argv[1]))
 mgrs = [m for m in cfg.get("customManagers", []) if any("NEXT-LINE-WATCH" in p for p in m.get("managerFilePatterns", []))]
 if not mgrs: print("FAIL: no customManager for NEXT-LINE-WATCH"); sys.exit(1)
@@ -45,5 +45,29 @@ last = automerge_rules[-1]
 if last.get("automerge") is not False:
     print("FAIL: %s's LAST automerge-setting rule sets automerge=%r, not False -- packageRules apply in order and a later match wins" % (dep, last.get("automerge"))); sys.exit(1)
 print("ok: %s is tracked, uncapped, and its last automerge rule is False" % dep)
+
+# The matchStrings regex must not depend on LATEST_GO= being the file's LAST line: an
+# end-anchored `.+?\s*$` form (no MULTILINE) stops matching the instant anything -- even a
+# trailing comment -- follows the value, so a perfectly good bump would go unseen.
+matchstrings = mgrs[0].get("matchStrings") or []
+if not matchstrings:
+    print("FAIL: %s has no matchStrings" % dep); sys.exit(1)
+pattern = matchstrings[0]
+if ".+?)\\s*$" in pattern or pattern.rstrip().endswith(r"\s*$"):
+    print("FAIL: %s matchStrings still uses the end-anchored '.+?\\s*$' form: %r" % (dep, pattern)); sys.exit(1)
+
+# Apply the regex the way Renovate would (against the real file, no MULTILINE) and confirm it
+# captures exactly the value on the LATEST_GO= line. Python's re needs (?P<name>...), not the
+# (?<name>...) form Renovate's regex engine accepts, so translate before compiling.
+py_pattern = pattern.replace("(?<", "(?P<")
+text = open(sys.argv[2]).read()
+expected = sys.argv[3]
+m = re.search(py_pattern, text)
+if not m:
+    print("FAIL: matchStrings regex %r does not match NEXT-LINE-WATCH" % pattern); sys.exit(1)
+captured = m.group("currentValue")
+if captured != expected:
+    print("FAIL: matchStrings captured %r, expected %r (the LATEST_GO= value)" % (captured, expected)); sys.exit(1)
+print("ok: %s matchStrings captures exactly %r from NEXT-LINE-WATCH" % (dep, captured))
 PY
 echo "PASS: next-line-watch"
