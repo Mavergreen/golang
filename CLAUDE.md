@@ -26,7 +26,7 @@ GitHub Releases. Ships as `golang-<gover>-native-mavericks.<rev>.pkg` and
   (`/usr/local/go126`, `dev.modernmavericks.golang.go126`, the LaunchAgent label, the product title,
   and the Sparkle feed `feed-126`). The line number is itself **derived** from `UPSTREAM_VERSION`
   (`build/version.sh line`; 1.26.5 → 126), never configured separately.
-  - **A new Go minor line is a NEW REPO** (`ModernMavericks/golang-127`), forked from this one — not a
+  - **A new Go minor line is a NEW REPO** (`Mavergreen/golang-127`), forked from this one — not a
     second directory here. It inherits this repo's `patches/` as its starting point. `docs/` is
     gitignored here (tracked out-of-band, not present in a clone) — for why, see the commits that
     made it so: "refactor: retire lines/, ship one line from the repo root" and ec77028

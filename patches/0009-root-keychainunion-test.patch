@@ -252,7 +252,7 @@ and no real keychain:
 +
 +// The same certificate DER enumerated as both TrustRoot and Deny -- e.g. trusted in one
 +// keychain domain and distrusted in another, the input shape of
-+// github.com/ModernMavericks/golang/issues/9. Deny wins whichever entry comes first, even
++// github.com/Mavergreen/golang/issues/9. Deny wins whichever entry comes first, even
 +// with the CA bundle also carrying the root and the verify-time veto switched off.
 +func TestKeychainUnionDenyBeatsTrustRootForSameCert(t *testing.T) {
 +	saved := keychainUnionDistrusted

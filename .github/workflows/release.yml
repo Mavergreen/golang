@@ -69,7 +69,7 @@ jobs:
         with:
           fetch-depth: 0   # build/version.sh counts existing <upstream>-mavericks.* tags
       - name: Install mavericks-shipyard
-        uses: ModernMavericks/shipyard/.github/actions/install@v1
+        uses: Mavergreen/shipyard/.github/actions/install@v1
       - name: Decide the release plan
         id: p
         run: |
@@ -115,7 +115,7 @@ jobs:
         # exports $SHIPYARD_SCRIPTS. We do NOT clone or build it by hand. @v1 is the moving major tag;
         # Renovate's github-actions manager tracks it (no SHA, no marker comment). shipyard's config
         # auto-scaffolds our .github/renovate.json. Consumed via find_package under shipyard-cmake.
-        uses: ModernMavericks/shipyard/.github/actions/install@v1
+        uses: Mavergreen/shipyard/.github/actions/install@v1
 
       - name: Record the pre-build tree
         run: sh "$SHIPYARD_SCRIPTS/assert-tree-clean.sh" --record
@@ -308,7 +308,7 @@ jobs:
     permissions:
       actions: read     # this run's job logs
       contents: read
-    uses: ModernMavericks/shipyard/.github/workflows/scan-for-key.yml@v1
+    uses: Mavergreen/shipyard/.github/workflows/scan-for-key.yml@v1
     with:
       artifact: golang-go${{ needs.plan.outputs.line }}
     secrets:
@@ -319,7 +319,7 @@ jobs:
     if: needs.plan.outputs.any_publish == 'true'
     permissions:
       contents: write
-    uses: ModernMavericks/shipyard/.github/workflows/publish-release.yml@v1
+    uses: Mavergreen/shipyard/.github/workflows/publish-release.yml@v1
     with:
       version: ${{ needs.plan.outputs.version }}
       artifact: golang-go${{ needs.plan.outputs.line }}

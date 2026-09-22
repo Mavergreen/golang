@@ -12,7 +12,7 @@ port. An own-upstream bump cuts `<upstream>-mavericks.1`; an ingredient bump cut
 | macports-legacy-support shim (prebuilt) | `MLS_VERSION # mavericks-legacysupport` in `build/versions.sh` | ✅ shared preset's `# mavericks-legacysupport` customManager | `build/versions.sh` is a watched path → repackage dispatched |
 | curl.se CA bundle | `vendor/cacert.pem`, hash-pinned by `CA_SHA256` in `build/versions.sh` | ❌ **untrackable — manual refresh** (see below) | both are watched paths → repackage dispatched when the refresh lands |
 | Bootstrap Go (builds the toolchain) | `go-version:` on `actions/setup-go` in `.github/workflows/release.yml` | ✅ github-actions `uses-with`, **capped to this line** (`<1.27`) | `release.yml` is not a watched path, so cut the repackage deliberately |
-| MacOSX10.9 SDK, Sparkle framework | `ModernMavericks/shipyard@v1` | ✅ github-actions manager tracks the tag | `@v1` is a *moving* tag, so content moves without any path changing (see below) |
+| MacOSX10.9 SDK, Sparkle framework | `Mavergreen/shipyard@v1` | ✅ github-actions manager tracks the tag | `@v1` is a *moving* tag, so content moves without any path changing (see below) |
 
 Not ingredients: `patches/` and the build scripts are this repo's own recipe — a change there is
 a repackage you cut deliberately (`workflow_dispatch` with `local_release=true`), not something
