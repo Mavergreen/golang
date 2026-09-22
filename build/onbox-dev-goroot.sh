@@ -8,7 +8,7 @@
 set -eu
 here="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$here/.." && pwd)"
-GO_LINE="${GO_LINE:-126}"
+GO_LINE="$(sh "$REPO_ROOT/build/version.sh" line)"; export GO_LINE
 installed="${INSTALLED_GOROOT:-/usr/local/go$GO_LINE}"
 base="${DEV_BASE:-$HOME/.cache/mavericks-golang/dev}"
 pdir="$REPO_ROOT/patches"

@@ -28,8 +28,10 @@ between us and a 1.26 toolchain built by a 1.27 compiler.
 
 Two things were wrong with that. Changing the compiler changes a shipped artifact's inputs with no
 upstream reason — `UPSTREAM_VERSION` is still 1.26.5, so the product did not change, only how it was
-made. And "1.27" has no business appearing in a repo that must never build it: a new Go line is a
-new repo, and `NEXT-LINE-WATCH` is the thing that tells us one exists.
+made. And no BUILD INPUT may be on 1.27 in a repo that must never build it: a new Go line is a new
+repo. `NEXT-LINE-WATCH` is the one place a 1.27 version appears as DATA — a tracked value Renovate
+bumps — rather than as explanation; it exists precisely to tell us a new line is out there, without
+being an input to anything that ships.
 
 So it is capped `<1.27` like the line itself, and still tracked within it: 1.26.x bootstrap updates
 land normally. Raising the cap is the same deliberate act as creating a new line repo.

@@ -70,7 +70,7 @@ jobs:
           fetch-depth: 0   # build/version.sh counts existing <upstream>-mavericks.* tags
       - name: Install mavericks-shipyard
         uses: ModernMavericks/shipyard/.github/actions/install@v1
-      - name: Decide the release plan, per line
+      - name: Decide the release plan
         id: p
         run: |
           set -eu

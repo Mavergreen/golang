@@ -27,10 +27,14 @@ GitHub Releases. Ships as `golang-<gover>-native-mavericks.<rev>.pkg` and
   and the Sparkle feed `feed-126`). The line number is itself **derived** from `UPSTREAM_VERSION`
   (`build/version.sh line`; 1.26.5 → 126), never configured separately.
   - **A new Go minor line is a NEW REPO** (`ModernMavericks/golang-127`), forked from this one — not a
-    second directory here. It inherits this repo's `patches/` as its starting point. See
-    `docs/superpowers/plans/2026-09-09-retire-lines-one-repo-per-go-line.md` ("Design decisions") for
-    why, and this repo's Renovate cap (`allowedVersions: "<1.27"` on `go-126`) is what keeps this repo
-    on 1.26.x so it can never drift onto the next line by itself.
+    second directory here. It inherits this repo's `patches/` as its starting point. `docs/` is
+    gitignored here (tracked out-of-band, not present in a clone) — for why, see the commits that
+    made it so: fae9e3f ("refactor: retire lines/, ship one line from the repo root") and ec77028
+    ("ci: build one line, not a matrix — unblock the stuck Renovate PRs"). This repo's Renovate cap
+    (`allowedVersions: "<1.27"` on `go-126`) is what keeps this repo on 1.26.x so it can never drift
+    onto the next line by itself. `NEXT-LINE-WATCH` is the uncapped Renovate tracker for this: its PR
+    is the "a new Go line exists" notification, deliberately left to require a human merge rather
+    than automerging.
   - The gates are what keep a line safe to ship, not fuzzy patch application: patches 0005–0010 and
     0013–0015 are the keychain-union trust model in `src/crypto/x509`, exactly where Go churns between
     minors. A fuzzy apply (`patch -p0 -F 3`) can succeed and be wrong — that is what `tests/trust/` and

@@ -16,9 +16,29 @@
       "depNameTemplate": "go-126",
       "packageNameTemplate": "go",
       "datasourceTemplate": "golang-version"
+    },
+    {
+      "customType": "regex",
+      "description": "Watch upstream Go for a NEW LINE. Deliberately uncapped, unlike the go-126 manager: the cap on the shipping line is what keeps this repo on 1.26.x, so something must stay uncapped or a new minor would never be visible here. Bumping this file changes nothing that ships; the PR is the notification that a new repo may be wanted.",
+      "managerFilePatterns": [
+        "/^NEXT-LINE-WATCH$/"
+      ],
+      "matchStrings": [
+        "LATEST_GO=(?<currentValue>.+?)\\s*$"
+      ],
+      "depNameTemplate": "go-latest",
+      "packageNameTemplate": "go",
+      "datasourceTemplate": "golang-version"
     }
   ],
   "packageRules": [
+    {
+      "description": "The go-latest watch must never automerge: the shared preset's default is automerge=true, and an un-ruled PR would merge itself when green and nobody would see it. The PR IS the notification that a new Go line exists, so a human has to see it and merge it deliberately -- this is not a version cap (no allowedVersions), just a merge gate.",
+      "matchDepNames": [
+        "go-latest"
+      ],
+      "automerge": false
+    },
     {
       "description": "The 126 line stays on 1.26.x. Not an automerge exception -- automerge is the family default (ship-if-green) and still applies; this only stops Renovate from walking the line onto a Go minor it was never built for.",
       "matchDepNames": [
