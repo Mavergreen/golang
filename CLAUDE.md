@@ -32,9 +32,8 @@ GitHub Releases. Ships as `golang-<gover>-native-mavericks.<rev>.pkg` and
     made it so: "refactor: retire lines/, ship one line from the repo root" and ec77028
     ("ci: build one line, not a matrix — unblock the stuck Renovate PRs"). This repo's Renovate cap
     (`allowedVersions: "<1.27"` on `go-126`) is what keeps this repo on 1.26.x so it can never drift
-    onto the next line by itself. `NEXT-LINE-WATCH` is the uncapped Renovate tracker for this: its PR
-    is the "a new Go line exists" notification, deliberately left to require a human merge rather
-    than automerging.
+    onto the next line by itself. A new line gets noticed the ordinary way: a consumer's routine
+    Renovate bump (e.g. a tailscale bump needing Go 1.27) fails its build.
   - The gates are what keep a line safe to ship, not fuzzy patch application: patches 0005–0010 and
     0013–0015 are the keychain-union trust model in `src/crypto/x509`, exactly where Go churns between
     minors. A fuzzy apply (`patch -p0 -F 3`) can succeed and be wrong — that is what `tests/trust/` and
