@@ -23,7 +23,7 @@ GitHub Releases. Ships as `golang-<gover>-native-mavericks.<rev>.pkg` and
   `workflow_dispatch local_release=true`.
 - **This repo ships ONE Go minor line (1.26) from the repo root.** `UPSTREAM_VERSION` and `patches/`
   live at the top level, not under a per-line directory; everything else derives from the line number
-  (`/usr/local/go126`, `dev.modernmavericks.golang.go126`, the LaunchAgent label, the product title,
+  (`/usr/local/go126`, `dev.mavergreen.golang.go126`, the LaunchAgent label, the product title,
   and the Sparkle feed `feed-126`). The line number is itself **derived** from `UPSTREAM_VERSION`
   (`build/version.sh line`; 1.26.5 → 126), never configured separately.
   - **A new Go minor line is a NEW REPO** (`Mavergreen/golang-127`), forked from this one — not a

@@ -16,16 +16,17 @@ pkg="$out/$base.pkg"
 # that loads the agent -- all rendered by the shared helper. Skipped if the updater isn't built.
 : "${SHIPYARD_SCRIPTS:?mavericks-shipyard not found; install it -- see its README}"
 UPD_APP="${UPD_APP:-/updater/GoUpdater.app}"
-set --                                    # pkgbuild gets --scripts only when there IS a postinstall
+scr="$out/pkg-scripts"; rm -rf "$scr"; mkdir -p "$scr"
+# ONE-TIME MIGRATION off the ModernMavericks identity (flag day 2026-09-22): the preinstall forgets
+# this pkg's pre-rename receipt. DELETABLE with build/flag-day-preinstall.sh.
+sh "$here/flag-day-preinstall.sh" "dev.modernmavericks.golang.go${GO_LINE}" "$scr/preinstall"
 if [ -d "$UPD_APP" ]; then
-  scr="$out/pkg-scripts"; rm -rf "$scr"; mkdir -p "$scr"
   sh "$SHIPYARD_SCRIPTS/stage_updater.sh" \
     --stage "$stage" \
     --app "$UPD_APP" \
-    --app-dir "/Library/Application Support/ModernMavericks" \
-    --agent-label "dev.modernmavericks.golang.go${GO_LINE}-updatecheck" \
+    --app-dir "/Library/Application Support/Mavergreen" \
+    --agent-label "dev.mavergreen.golang.go${GO_LINE}-updatecheck" \
     --scripts-out "$scr"
-  set -- --scripts "$scr"
 else
   echo ">> WARNING: no updater at $UPD_APP; packaging toolchain only (build it: shipyard-cmake --build)" >&2
 fi
@@ -39,14 +40,14 @@ cp "$REPO_ROOT/scripts/resources/Welcome.html" "$RES/"
 # with the postinstall that loads the update-check agent.
 find "$stage" -name '._*' -delete 2>/dev/null || true   # strip AppleDouble cruft
 comp="$out/golang-go${GO_LINE}-component.pkg"
-pkgbuild --root "$stage" --identifier "dev.modernmavericks.golang.go${GO_LINE}" --version "$PKG_VERSION" \
-         "$@" --install-location / "$comp"
+pkgbuild --root "$stage" --identifier "dev.mavergreen.golang.go${GO_LINE}" --version "$PKG_VERSION" \
+         --scripts "$scr" --install-location / "$comp"
 
 # Product archive with the 10.9.5 OS floor (shared helper, from the installed prefix).
 HELPER="$SHIPYARD_SCRIPTS/set_install_floor.sh"
 lic=""; [ -f "$RES/LICENSE.txt" ] && lic="--license LICENSE.txt"
 sh "$HELPER" \
-  --identifier "dev.modernmavericks.golang.go${GO_LINE}" \
+  --identifier "dev.mavergreen.golang.go${GO_LINE}" \
   --title "go${GO_LINE} — modern Go ${GO_VERSION%.*} for OS X 10.9" \
   --component "$comp" --out "$pkg" \
   --resources "$RES" --welcome Welcome.html $lic --host-arch x86_64
