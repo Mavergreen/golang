@@ -26,3 +26,9 @@ printf '%s\n' "$out" | grep -q "^FULL=${U}-mavericks.4$"  || { echo "FAIL local 
 printf '%s\n' "$out" | grep -q '^RELEASE=yes$'            || { echo "FAIL local REL: $out"; exit 1; }
 
 echo "PASS: version"
+
+# GO_LINE is DERIVED from the upstream version, not configured. Two sources of truth for "which
+# line is this" is how a repo ends up building 1.26 and stamping a go127 pkg identifier.
+R="$here/.."
+derived="$(GO_LINE= sh "$R/build/version.sh" line)"
+[ "$derived" = 126 ] || { echo "FAIL: derived line '$derived', expected 126"; exit 1; }
