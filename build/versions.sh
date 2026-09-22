@@ -23,16 +23,17 @@ export WORK="${MAVERICKS_WORK:-$MAVERICKS_BUILD_ROOT/golang-native}"
 # writes and .gitignore excludes; before a release is cut (local/CI build) fall back to
 # the computed auto version so a build never depends on a committed VERSION file.
 . "$REPO_ROOT/build/lib.sh"
-# A Go MINOR LINE is a product: go126 and a future go127 install side by side, each with its own
-# prefix, identifier, updater and feed, so a 1.26 user is never carried onto 1.27 unasked. Everything
-# below derives from the line -- adding one is a new lines/<line>/UPSTREAM_VERSION, nothing else.
-export GO_LINE="${GO_LINE:-126}"
-export MAVERICKS_UPSTREAM_FILE="$REPO_ROOT/lines/$GO_LINE/UPSTREAM_VERSION"
+# A Go MINOR LINE is a product: go126 and a future go127 install side by side (each in its own
+# repo), each with its own prefix, identifier, updater and feed, so a 1.26 user is never carried onto
+# 1.27 unasked. GO_LINE is derived from the root UPSTREAM_VERSION, not configured -- see
+# build/version.sh, which owns the derivation; this just asks it.
+GO_LINE="$(sh "$REPO_ROOT/build/version.sh" line)"; export GO_LINE
+export MAVERICKS_UPSTREAM_FILE="$REPO_ROOT/UPSTREAM_VERSION"
 export GO_VERSION="$(upstream_version)"
 # The line must match the upstream it points at, or every derived name is a lie.
 case "$GO_VERSION" in
   "$(printf '%s' "$GO_LINE" | sed 's/^\(.\)\(.*\)$/\1.\2/')".*) : ;;
-  *) echo "versions.sh: lines/$GO_LINE holds Go $GO_VERSION -- line and upstream disagree" >&2; exit 1 ;;
+  *) echo "versions.sh: UPSTREAM_VERSION holds Go $GO_VERSION -- line ($GO_LINE) and upstream disagree" >&2; exit 1 ;;
 esac
 if [ -f "$REPO_ROOT/VERSION" ]; then
   export PKG_VERSION="$(cat "$REPO_ROOT/VERSION")"

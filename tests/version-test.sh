@@ -4,9 +4,7 @@
 set -eu
 here="$(cd "$(dirname "$0")" && pwd)"
 script="$here/../build/version.sh"
-# Per-line upstream: a Go minor line is a product here (lines/126, lines/127, ...).
-GO_LINE="${GO_LINE:-126}"
-U="$(tr -d '[:space:]' < "$here/../lines/$GO_LINE/UPSTREAM_VERSION")"
+U="$(tr -d '[:space:]' < "$here/../UPSTREAM_VERSION")"
 
 # auto, no existing tags -> N=1, RELEASE=yes
 out="$(MAVERICKS_TAGS='' sh "$script" auto)"
@@ -32,3 +30,8 @@ echo "PASS: version"
 R="$here/.."
 derived="$(GO_LINE= sh "$R/build/version.sh" line)"
 [ "$derived" = 126 ] || { echo "FAIL: derived line '$derived', expected 126"; exit 1; }
+
+# A caller-supplied GO_LINE is a CHECK, not an override: pairing GO_LINE=127 with a 1.26.x
+# UPSTREAM_VERSION must fail loudly, not silently build the wrong line.
+mismatch_out="$(GO_LINE=127 sh "$R/build/version.sh" line 2>&1)" && { echo "FAIL: GO_LINE=127 sh build/version.sh line should have failed, printed: $mismatch_out"; exit 1; }
+echo "PASS: GO_LINE mismatch rejected"

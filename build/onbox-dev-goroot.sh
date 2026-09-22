@@ -11,7 +11,7 @@ REPO_ROOT="$(cd "$here/.." && pwd)"
 GO_LINE="${GO_LINE:-126}"
 installed="${INSTALLED_GOROOT:-/usr/local/go$GO_LINE}"
 base="${DEV_BASE:-$HOME/.cache/mavericks-golang/dev}"
-pdir="$REPO_ROOT/lines/$GO_LINE/patches"
+pdir="$REPO_ROOT/patches"
 ca_dir="/usr/local/go$GO_LINE/etc/openssl"
 [ -x "$installed/bin/go" ] || { echo "FATAL: no installed toolchain at $installed" >&2; exit 1; }
 ver="$(head -1 "$installed/VERSION" | sed 's/^go//')"

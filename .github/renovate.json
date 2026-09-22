@@ -6,9 +6,9 @@
   "customManagers": [
     {
       "customType": "regex",
-      "description": "Track Go for the 126 LINE. Each line is a separate product with its own UPSTREAM_VERSION and its own cap, so a line never jumps minor: 1.27 arrives as a new lines/127/ with its own manager, not by moving this one.",
+      "description": "Track Go for THIS REPO's line. One repo ships one line, so the cap keeps it on 1.26.x: Go 1.27 arrives as a new repo (see NEXT-LINE-WATCH), never as a bump here.",
       "managerFilePatterns": [
-        "/^lines/126/UPSTREAM_VERSION$/"
+        "/^UPSTREAM_VERSION$/"
       ],
       "matchStrings": [
         "^(?<currentValue>.+?)\\s*$"

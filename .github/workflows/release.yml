@@ -47,16 +47,17 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  # This repo ships ONE line (lines/126). Decide its version and whether it publishes ONCE here, and
-  # let the other jobs read that decision rather than recompute it -- they must all agree about what
-  # is being built.
+  # This repo ships ONE line, derived from the root UPSTREAM_VERSION. Decide its version and whether
+  # it publishes ONCE here, and let the other jobs read that decision rather than recompute it --
+  # they must all agree about what is being built.
   #
-  # Deliberately NOT a matrix, though lines/ can hold several. A matrix leg's status context embeds
-  # the version ("build (126, 1.26.8-mavericks.1)"), so it changes every release and can never be a
-  # required status check -- which left every Renovate PR here stuck on "Expected — waiting for
-  # status to be reported", unable to merge, for a month. A second line would also have coupled the
-  # lines: `publish` needs the whole matrix, so a failing 1.27 would have blocked a ready 1.26 from
-  # shipping. The family's answer is one repo per line, so this workflow builds one and says so.
+  # Deliberately not a matrix. A matrix leg's status context would embed the version ("build (126,
+  # 1.26.8-mavericks.1)"), so it would change every release and could never be a required status
+  # check -- which is what left every Renovate PR here stuck on "Expected — waiting for status to be
+  # reported", unable to merge, for a month, back when lines/ let several lines share a repo. A
+  # second line also would have coupled builds: `publish` needs the whole matrix, so a failing 1.27
+  # would have blocked a ready 1.26 from shipping. A Go minor line is a product, and a product is its
+  # own repo -- so this workflow builds the one line this repo has.
   plan:
     runs-on: ubuntu-latest
     outputs:
@@ -77,14 +78,13 @@ jobs:
           if [ "${{ github.event_name }}" = workflow_dispatch ] && [ "${{ inputs.local_release }}" = "true" ]; then
             mode=local
           fi
-          # One line, asserted -- not assumed. If a second lines/ dir ever appears, this workflow
-          # would silently build whichever the shell listed last and quietly not ship the other.
-          n="$(ls -d lines/*/ 2>/dev/null | wc -l | tr -d ' ')"
-          [ "$n" = 1 ] || { echo "::error::this workflow ships exactly one line, found $n in lines/ -- a second line belongs in its own repo"; exit 1; }
-          d="$(ls -d lines/*/)"; line="$(basename "$d")"
+          # One line, asserted -- not assumed. lines/ is retired: a second line belongs in its own repo.
+          [ -f UPSTREAM_VERSION ] || { echo "::error::no UPSTREAM_VERSION at the repo root"; exit 1; }
+          [ ! -d lines ] || { echo "::error::lines/ is retired -- a second line belongs in its own repo"; exit 1; }
+          line="$(sh build/version.sh line)"
           if [ "$GITHUB_REF_TYPE" = tag ]; then
             # A tag names this line's release; anything else just builds.
-            up="$(tr -d '[:space:]' < "$d/UPSTREAM_VERSION")"
+            up="$(tr -d '[:space:]' < UPSTREAM_VERSION)"
             case "$GITHUB_REF_NAME" in
               "$up"-mavericks.*) full="$GITHUB_REF_NAME"; rel=yes ;;
               *) full="$(GO_LINE=$line sh build/version.sh auto | sed -n 's/^FULL=//p')"; rel=no ;;
