@@ -16,17 +16,16 @@ pkg="$out/$base.pkg"
 # that loads the agent -- all rendered by the shared helper. Skipped if the updater isn't built.
 : "${SHIPYARD_SCRIPTS:?mavericks-shipyard not found; install it -- see its README}"
 UPD_APP="${UPD_APP:-/updater/GoUpdater.app}"
-scr="$out/pkg-scripts"; rm -rf "$scr"; mkdir -p "$scr"
-# ONE-TIME MIGRATION off the ModernMavericks identity (flag day 2026-09-22): the preinstall forgets
-# this pkg's pre-rename receipt. DELETABLE with build/flag-day-preinstall.sh.
-sh "$here/flag-day-preinstall.sh" "dev.modernmavericks.golang.go${GO_LINE}" "$scr/preinstall"
+set --
 if [ -d "$UPD_APP" ]; then
+  scr="$out/pkg-scripts"; rm -rf "$scr"; mkdir -p "$scr"
   sh "$SHIPYARD_SCRIPTS/stage_updater.sh" \
     --stage "$stage" \
     --app "$UPD_APP" \
     --app-dir "/Library/Application Support/Mavergreen" \
     --agent-label "dev.mavergreen.golang.go${GO_LINE}-updatecheck" \
     --scripts-out "$scr"
+  set -- --scripts "$scr"
 else
   echo ">> WARNING: no updater at $UPD_APP; packaging toolchain only (build it: shipyard-cmake --build)" >&2
 fi
@@ -41,7 +40,7 @@ cp "$REPO_ROOT/scripts/resources/Welcome.html" "$RES/"
 find "$stage" -name '._*' -delete 2>/dev/null || true   # strip AppleDouble cruft
 comp="$out/golang-go${GO_LINE}-component.pkg"
 pkgbuild --root "$stage" --identifier "dev.mavergreen.golang.go${GO_LINE}" --version "$PKG_VERSION" \
-         --scripts "$scr" --install-location / "$comp"
+         "$@" --install-location / "$comp"
 
 # Product archive with the 10.9.5 OS floor (shared helper, from the installed prefix).
 HELPER="$SHIPYARD_SCRIPTS/set_install_floor.sh"
