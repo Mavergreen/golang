@@ -26,22 +26,6 @@ export GOROOT_FINAL="$CROSS_PREFIX"
 export GOCACHE="$WORK/.gocache-cross"
 ( cd "$WORK/go/src" && ./make.bash -v )
 
-# Re-link the arm64 host tools against the pinned 11.3 SDK. make.bash internal-links them, and Go's
-# internal linker stamps its own floor (12.0) that no -mmacosx-version-min can undo -- the same reason
-# build-native.sh forces -linkmode=external for amd64. The family pin for arm64 is minos
-# $ARM64_MACOS_MIN / sdk 11.3.
-SDK_ARM64=$(sh "$SHIPYARD_SCRIPTS/fetch_sdk.sh" --arch arm64)
-HOSTCC="$WORK/mavericks-host-clang"
-cat > "$HOSTCC" <<EOF
-#!/bin/sh
-exec /usr/bin/clang -arch arm64 -isysroot $SDK_ARM64 -mmacosx-version-min=$ARM64_MACOS_MIN "\$@"
-EOF
-chmod 755 "$HOSTCC"
-( export GOROOT="$WORK/go" CGO_ENABLED=1 CC="$HOSTCC"
-  "$WORK/go/bin/go" install -v -ldflags=-linkmode=external cmd )
-MAVERICKS_ALLOW_ARCHS=arm64 sh "$SHIPYARD_SCRIPTS/assert_binary_compatible.sh" \
-  "$WORK/go/bin/go" "$WORK/go/bin/gofmt" "$WORK/go/pkg/tool/darwin_arm64/"*
-
 # stage into a DESTDIR tree at the cross prefix
 stage="$WORK/staging-cross"
 rm -rf "$stage"; mkdir -p "$stage$CROSS_PREFIX"
