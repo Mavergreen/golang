@@ -176,7 +176,8 @@ jobs:
           # find_package resolves MavericksShipyard from shipyard-cmake's own prefix (the pkg installed
           # above); no CMAKE_PREFIX_PATH, no vendored copy. The x86_64 Sparkle slice is auto-derived from
           # the native updater's CMAKE_OSX_ARCHITECTURES by mavericks_add_updater_app.
-          shipyard-cmake -S . -B "$BUILD" -DCMAKE_OBJC_COMPILER=/usr/bin/clang
+          shipyard-cmake -S . -B "$BUILD" -DCMAKE_OBJC_COMPILER=/usr/bin/clang \
+            -DCMAKE_TOOLCHAIN_FILE="$SHIPYARD_SCRIPTS/../MavericksToolchain.cmake"
           shipyard-cmake --build "$BUILD" --target GoUpdater
           otool -L "$BUILD/GoUpdater.app/Contents/MacOS/GoUpdater" | tee /tmp/o.txt
           ! grep -qi 'usr/local/go126' /tmp/o.txt || { echo "::error::updater links the toolchain it updates"; exit 1; }
@@ -199,7 +200,8 @@ jobs:
           BUILD="$MAVERICKS_BUILD_ROOT/golang-updater-cross"
           # The arm64 Sparkle slice is auto-derived from the cross updater's CMAKE_OSX_ARCHITECTURES
           # (arm64, set by MAVGO_VARIANT=cross) -- no hand-plumbed framework path.
-          shipyard-cmake -S . -B "$BUILD" -DMAVGO_VARIANT=cross -DCMAKE_OBJC_COMPILER=/usr/bin/clang
+          shipyard-cmake -S . -B "$BUILD" -DMAVGO_VARIANT=cross -DCMAKE_OBJC_COMPILER=/usr/bin/clang \
+            -DCMAKE_TOOLCHAIN_FILE="$SHIPYARD_SCRIPTS/../MavericksToolchain.cmake"
           shipyard-cmake --build "$BUILD" --target GoCrossUpdater
 
       - name: Package the cross .pkg + tarball + manifest

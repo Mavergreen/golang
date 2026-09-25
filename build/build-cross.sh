@@ -34,7 +34,7 @@ rm -rf "$stage"; mkdir -p "$stage$CROSS_PREFIX"
 # amd64 shim + the pinned-SDK fetch scripts (self-contained first-use fetch, no shipyard at runtime)
 mkdir -p "$stage$CROSS_PREFIX/lib" "$stage$CROSS_PREFIX/libexec"
 cp "$LEGACY_A" "$stage$CROSS_PREFIX/lib/libMacportsLegacySupport.a"
-cp "$SHIPYARD_SCRIPTS/fetch_sdk.sh" "$SHIPYARD_SCRIPTS/mavericks_fetch.sh" "$stage$CROSS_PREFIX/libexec/"
+cp "$SHIPYARD_SCRIPTS/fetch_sdk.sh" "$SHIPYARD_SCRIPTS/mavericks_fetch.sh" "$SHIPYARD_SCRIPTS/sdk-pins.sh" "$stage$CROSS_PREFIX/libexec/"
 
 # Cross CC wrapper: force the amd64/10.9 target on every invocation (Go doesn't inject -arch on
 # darwin, so we must), and add the static shim + -Wl,-U allowances on LINK steps only.
