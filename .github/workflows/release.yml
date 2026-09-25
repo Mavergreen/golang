@@ -180,8 +180,9 @@ jobs:
           shipyard-cmake -S . -B "$BUILD" -DCMAKE_OBJC_COMPILER=/usr/bin/clang \
             -DCMAKE_TOOLCHAIN_FILE="$SHIPYARD_SCRIPTS/../MavericksToolchain.cmake"
           shipyard-cmake --build "$BUILD" --target go${{ needs.plan.outputs.line }}-updater
-          otool -L "$BUILD/go${{ needs.plan.outputs.line }}-updater.app/Contents/MacOS/go${{ needs.plan.outputs.line }}-updater" | tee /tmp/o.txt
-          ! grep -qi 'usr/local/mavergreen/go126' /tmp/o.txt || { echo "::error::updater links the toolchain it updates"; exit 1; }
+          otool -L "$BUILD/go${{ needs.plan.outputs.line }}-updater.app/Contents/MacOS/go${{ needs.plan.outputs.line }}-updater" > /tmp/o.txt
+          cat /tmp/o.txt
+          ! grep -qi 'usr/local/mavergreen/' /tmp/o.txt || { echo "::error::updater links the toolchain it updates"; exit 1; }
 
       - name: Package the native .pkg (updater + 10.9.5 floor) + tarball + manifest
         run: UPD_APP="$MAVERICKS_BUILD_ROOT/golang-updater/go${{ needs.plan.outputs.line }}-updater.app" sh build/package-pkg.sh
