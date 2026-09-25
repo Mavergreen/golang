@@ -50,6 +50,11 @@ export MLS_VERSION=1.5.2-mavericks.4   # mavericks-legacysupport
 
 export PREFIX="/usr/local/go${GO_LINE}"
 export MACOS_MIN="10.9"
+# The family's arm64 pin (spec D1): host tools built for the arm64 cross toolchain itself (its
+# make.bash run, then re-linked -- build-cross.sh) must record this floor, not the 12.0 Go's own
+# internal linker stamps. ONE place, so a future line repo (e.g. go127, which sets its own floor)
+# only has to change this.
+export ARM64_MACOS_MIN="11.0"
 
 # Both products bake the SAME CA convention path into the std trust model: the
 # NATIVE prefix's bundle dir. Native populates it; cross-built apps look there

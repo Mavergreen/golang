@@ -66,3 +66,8 @@ extract page — a real version to bump instead of a bare hash.
 string stays `v1`. Renovate can only tell us about `v1 → v2`. That is deliberate (shipyard is
 ours, and its changes are gated by its own CI), but it means a shipyard fix does **not**
 auto-repackage anything downstream — cut those repackages by hand when they matter.
+
+## Conformance deviations
+
+- sdk-pin:*/src/debug/dwarf/testdata/typedef.macho*: upstream Go's DWARF test fixtures, Mach-O objects the Go team compiled long ago; shipped verbatim as source-tree testdata and never run as a program
+- sdk-pin:*/src/runtime/race/*darwin*.syso: upstream Go's prebuilt race-detector runtime objects, shipped verbatim as part of std's source tree and linked only into a user's -race build
