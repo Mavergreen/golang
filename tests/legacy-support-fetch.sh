@@ -1,4 +1,5 @@
 #!/bin/sh
+# platform: macOS-only -- pkgutil expands the shim's pkg and lipo reads the static library's slices
 set -eu
 here=$(cd "$(dirname "$0")/../build" && pwd)          # test/ -> build/
 TMP=$(mktemp -d "${TMPDIR:-/tmp}/legacy-support-fetch.XXXXXX"); trap 'rm -rf "$TMP"' EXIT   # template: 10.9 BSD mktemp requires one

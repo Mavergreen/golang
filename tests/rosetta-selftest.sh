@@ -1,9 +1,10 @@
 #!/bin/sh
+# platform: macOS-only -- runs the staged darwin/amd64 toolchain under Rosetta
 # Best-effort: run the STAGED amd64 toolchain under emulation as a pre-publish sanity
 # gate -- does the cross-produced amd64 `go` actually execute, compile, link, and run
 # a program? Skips cleanly (exit 0) when amd64 execution is unavailable; must NEVER
 # fail the build. Uses a pure-Go program (CGO_ENABLED=0): the staged go.env bakes the
-# ABSOLUTE install CC path (/usr/local/go126/bin/mavericks-clang) + shim, which only
+# ABSOLUTE install CC path (/usr/local/mavergreen/go126/bin/mavericks-clang) + shim, which only
 # exist once installed, so cgo is validated by the on-box 10.9 smoke, not here. The
 # authoritative runtime gate is the real 10.9 box.
 set -eu

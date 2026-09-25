@@ -1,4 +1,5 @@
 #!/bin/sh
+# platform: host-agnostic
 # version.sh: derives <upstream>-mavericks.N + RELEASE decision. Upstream is read from
 # UPSTREAM_VERSION (NOT hardcoded) so a Renovate bump never breaks this test.
 set -eu

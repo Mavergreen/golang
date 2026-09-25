@@ -1,4 +1,5 @@
 #!/bin/sh
+# platform: macOS-only -- pkgutil expands the prebuilt shim's installer pkg
 set -eu
 . "$(cd "$(dirname "$0")" && pwd)/versions.sh"
 : "${MLS_VERSION:?set MLS_VERSION}"

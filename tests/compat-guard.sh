@@ -1,4 +1,5 @@
 #!/bin/sh
+# platform: macOS-only -- shipyard's assert_binary_compatible.sh reads Mach-O load commands with otool
 set -eu
 # Resolve the shared compat guard from mavericks-shipyard's INSTALLED location
 # (via versions.sh's SHIPYARD_SCRIPTS resolver -- registry/prefix, not a sibling copy).

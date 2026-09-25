@@ -1,4 +1,5 @@
 #!/bin/sh
+# platform: macOS-only -- make.bash builds the darwin/arm64 toolchain with Apple's /usr/bin/clang and the pinned SDK
 set -eu
 here="$(cd "$(dirname "$0")" && pwd)"
 . "$here/versions.sh"

@@ -1,4 +1,5 @@
 #!/bin/sh
+# platform: host-agnostic
 # Print the official SHA256 of go<version>.src.tar.gz from go.dev's release feed.
 # Set GO_DL_JSON to a local feed file to skip the network (tests, or a caller that
 # already fetched it). No in-repo pin: the feed is the source of truth (see the

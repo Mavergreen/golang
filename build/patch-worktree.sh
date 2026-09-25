@@ -1,4 +1,5 @@
 #!/bin/sh
+# platform: macOS-only -- runs apply-patches.sh, which edits in place with BSD sed's `sed -i ''`
 # Prepare an editable Go tree for patch work: $WORK/go = upstream (UPSTREAM_VERSION) + this line's
 # patches, and $WORK/go.pristine = the same upstream untouched, which build/mkpatch.sh diffs against.
 # Give it a WORK of its own so a build never clobbers edits:

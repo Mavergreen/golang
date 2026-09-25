@@ -1,4 +1,5 @@
 #!/bin/sh
+# platform: macOS-only -- runs on the 10.9 box, rebuilding the installed darwin toolchain and editing it with BSD sed's `sed -i ''`
 # 10.9 fast loop for patch work -- run ON the Mavericks box. Builds a writable GOROOT from the
 # INSTALLED toolchain (its 10.9 binaries and generated sources), resets every file this line's
 # patches touch to pristine upstream of the installed Go version, and re-applies the patches.
@@ -9,10 +10,10 @@ set -eu
 here="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$here/.." && pwd)"
 GO_LINE="$(sh "$REPO_ROOT/build/version.sh" line)"; export GO_LINE
-installed="${INSTALLED_GOROOT:-/usr/local/go$GO_LINE}"
+installed="${INSTALLED_GOROOT:-/usr/local/mavergreen/go$GO_LINE}"
 base="${DEV_BASE:-$HOME/.cache/mavericks-golang/dev}"
 pdir="$REPO_ROOT/patches"
-ca_dir="/usr/local/go$GO_LINE/etc/openssl"
+ca_dir="/usr/local/mavergreen/go$GO_LINE/etc/openssl"
 [ -x "$installed/bin/go" ] || { echo "FATAL: no installed toolchain at $installed" >&2; exit 1; }
 ver="$(head -1 "$installed/VERSION" | sed 's/^go//')"
 pristine="$base/pristine-$ver"

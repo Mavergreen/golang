@@ -1,4 +1,5 @@
 #!/bin/sh
+# platform: host-agnostic
 # Single source of truth for every pinned input. Sourced, not executed.
 : "${REPO_ROOT:=$(cd "$(dirname "$0")/.." && pwd)}"
 export REPO_ROOT
@@ -48,14 +49,14 @@ export GO_SRC_URL="https://go.dev/dl/go${GO_VERSION}.src.tar.gz"
 # shared preset's `# mavericks-legacysupport` customManager (unquoted, marker on the line).
 export MLS_VERSION=1.5.2-mavericks.4   # mavericks-legacysupport
 
-export PREFIX="/usr/local/go${GO_LINE}"
+export PREFIX="/usr/local/mavergreen/go${GO_LINE}"
 export MACOS_MIN="10.9"
 
 # Both products bake the SAME CA convention path into the std trust model: the
 # NATIVE prefix's bundle dir. Native populates it; cross-built apps look there
 # (a box with the native .pkg installed, or an app that drops/embeds its CA).
-export NATIVE_PREFIX="/usr/local/go${GO_LINE}"
-export CROSS_PREFIX="/usr/local/go${GO_LINE}-cross"
+export NATIVE_PREFIX="/usr/local/mavergreen/go${GO_LINE}"
+export CROSS_PREFIX="/usr/local/mavergreen/go${GO_LINE}-cross"
 export CA_DIR="$NATIVE_PREFIX/etc/openssl"   # @SSLDIR@ substitution target (native == cross)
 
 export WLU_SYMS="_SecTrustEvaluateWithError _SecTrustCopyCertificateChain _notify_is_valid_token _xpc_date_create_from_current"

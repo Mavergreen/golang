@@ -1,4 +1,5 @@
 #!/bin/sh
+# platform: host-agnostic
 # Regenerate one patch file from the tree build/patch-worktree.sh prepared (same MAVERICKS_WORK).
 #   usage: sh build/mkpatch.sh <patch-file> [src/relative/path ...]
 # With no paths, uses the patch's own '+++' paths. Keeps the description (everything before the

@@ -1,4 +1,5 @@
 #!/bin/sh
+# platform: macOS-only -- links the darwin/amd64 toolchain through Apple's /usr/bin/clang against the pinned 10.9 SDK
 set -eu
 here="$(cd "$(dirname "$0")" && pwd)"
 . "$here/versions.sh"

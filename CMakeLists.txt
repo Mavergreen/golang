@@ -34,30 +34,22 @@ if(NOT MAVGO_LINE MATCHES "^[0-9]+$")
 endif()
 
 if(MAVGO_VARIANT STREQUAL "native")
-  set(_name       GoUpdater)
+  set(_short      go${MAVGO_LINE})
   set(_product    "Mavericks Go ${MAVGO_MINOR}")
-  set(_bundle     dev.mavergreen.GoUpdater)
-  # Per-LINE feed, not /latest/: installed updaters poll `feed-126`, so the URL must never
-  # change. A future Go line lives in its own repo with its own feed, not a second line here.
-  set(_feed       "https://github.com/Mavergreen/golang/releases/download/feed-${MAVGO_LINE}/appcast.xml")
   set(_logprefix  "MavGoUpdater")
-  set(_confirmbody "The Go toolchain in /usr/local/go${MAVGO_LINE} was updated.")
+  set(_confirmbody "The Go toolchain in /usr/local/mavergreen/go${MAVGO_LINE} was updated.")
   set(_relaunch   "/tmp/.mavericks-go-updater-relaunched")
 else()
-  set(_name       GoCrossUpdater)
+  set(_short      go${MAVGO_LINE}-cross)
   set(_product    "Mavericks Go ${MAVGO_MINOR} (cross)")
-  set(_bundle     dev.mavergreen.GoCrossUpdater)
-  set(_feed       "https://github.com/Mavergreen/golang/releases/download/feed-${MAVGO_LINE}/appcast-cross.xml")
   set(_logprefix  "MavGoCrossUpdater")
-  set(_confirmbody "The cross toolchain in /usr/local/go${MAVGO_LINE}-cross was updated.")
+  set(_confirmbody "The cross toolchain in /usr/local/mavergreen/go${MAVGO_LINE}-cross was updated.")
   set(_relaunch   "/tmp/.mavericks-go-cross-updater-relaunched")
 endif()
 
 mavericks_add_updater_app(
-  NAME ${_name}
+  PRODUCT ${_short}
   PRODUCT_NAME "${_product}"
-  BUNDLE_ID ${_bundle}
-  FEED_URL "${_feed}"
   ICON "${CMAKE_SOURCE_DIR}/updater/mavericks-go-updater.icns"
   VERSION "${MAVGO_VERSION}"
   LOG_PREFIX "${_logprefix}"

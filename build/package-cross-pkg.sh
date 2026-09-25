@@ -1,4 +1,5 @@
 #!/bin/sh
+# platform: macOS-only -- pkgbuild and productbuild (via set_install_floor.sh) build the installer archive
 set -eu
 here="$(cd "$(dirname "$0")" && pwd)"
 . "$here/versions.sh"
@@ -11,29 +12,28 @@ out="$WORK/out"; mkdir -p "$out"
 base="golang-${GO_VERSION}-cross-${PKG_VERSION#*-}"   # golang-1.26.5-cross-mavericks.<rev>
 pkg="$out/$base.pkg"
 
-# Stage the modern Sparkle updater + shim + LaunchAgent + postinstall via the shared helper.
-# Skipped if the cross updater isn't built.
 : "${SHIPYARD_SCRIPTS:?mavericks-shipyard not found; install it -- see its README}"
-UPD_APP="${UPD_APP:-/updater-cross/GoCrossUpdater.app}"
-set --
+UPD_APP="${UPD_APP:-/updater-cross/go${GO_LINE}-cross-updater.app}"
+scr="$out/pkg-scripts-cross"; rm -rf "$scr"
+set -- --stage "$stage" --product "go${GO_LINE}-cross" --name "Go ${GO_VERSION%.*} cross toolchain for Mavericks" \
+  --group go --line "${GO_LINE}-cross" --version "$PKG_VERSION" \
+  --exclude bin/mavericks-cross-clang --scripts-out "$scr"
 if [ -d "$UPD_APP" ]; then
-  scr="$out/pkg-scripts-cross"; rm -rf "$scr"; mkdir -p "$scr"
-  sh "$SHIPYARD_SCRIPTS/stage_updater.sh" \
-    --stage "$stage" \
-    --app "$UPD_APP" \
-    --app-dir "/Library/Application Support/Mavergreen" \
-    --agent-label "dev.mavergreen.golang.go${GO_LINE}-cross-updatecheck" \
-    --scripts-out "$scr"
-  set -- --scripts "$scr"
+  set -- "$@" --updater-app "$UPD_APP"
 else
   echo ">> WARNING: no cross updater at $UPD_APP; packaging toolchain only" >&2
 fi
-
 find "$stage" -name '._*' -delete 2>/dev/null || true
+sh "$SHIPYARD_SCRIPTS/stage_product.sh" "$@"
 
-# Plain product pkg -- NO 10.9.5 floor (this installs on modern macOS, arm64 host).
+comp="$out/golang-go${GO_LINE}-cross-component.pkg"
 pkgbuild --root "$stage" --identifier "dev.mavergreen.golang.go${GO_LINE}-cross" --version "$PKG_VERSION" \
-         "$@" --install-location / "$pkg"
+         --scripts "$scr" --install-location / "$comp"
+sh "$SHIPYARD_SCRIPTS/set_install_floor.sh" \
+  --identifier "dev.mavergreen.golang.go${GO_LINE}-cross" \
+  --title "go${GO_LINE}-cross — build 10.9 programs on modern macOS" \
+  --component "$comp" --out "$pkg" --min-os 11.0 --host-arch arm64 --require-scripts
+rm -f "$comp"
 # Provenance: input pins in build/versions.sh, output hash in the release's SHA256SUMS.
 echo "$pkg"
 

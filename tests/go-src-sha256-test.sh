@@ -1,4 +1,5 @@
 #!/bin/sh
+# platform: host-agnostic
 # Unit test for build/go-src-sha256.sh (offline, via GO_DL_JSON).
 set -eu
 here="$(cd "$(dirname "$0")" && pwd)"

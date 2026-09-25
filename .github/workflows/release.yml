@@ -8,7 +8,8 @@ name: release
 # Products:
 #   - native (runs on 10.9): amd64/min-10.9 toolchain + x86_64 Sparkle updater + 10.9.5 floor
 #   - cross  (runs on modern macOS, targets 10.9): native arm64 toolchain + arm64 Sparkle updater
-# Each is EdDSA-signed with its own appcast (appcast.xml / appcast-cross.xml). Publishing is the
+# Each is EdDSA-signed with its own feed (go126.xml / go126-cross.xml), which its updater polls at
+# this repo's /releases/latest/download/, so there is no separate feed release. Publishing is the
 # shared publish-release.yml, which mints the tag itself (no PAT) and refuses an empty Release body.
 # No 10.9 runner anywhere; the published artifacts are re-validated on a real 10.9 box out-of-band.
 
@@ -162,7 +163,7 @@ jobs:
 
       - name: Compat guard on the shipped toolchain binaries
         run: |
-          stage="$MAVERICKS_BUILD_ROOT/golang-native/staging/usr/local/go$GO_LINE"
+          stage="$MAVERICKS_BUILD_ROOT/golang-native/staging/usr/local/mavergreen/go$GO_LINE"
           sh tests/compat-guard.sh "$stage/bin/go" "$stage/bin/gofmt" "$stage"/pkg/tool/darwin_amd64/*
 
       - name: Optional amd64 self-test under Rosetta (best-effort, never gates)
@@ -178,12 +179,12 @@ jobs:
           # the native updater's CMAKE_OSX_ARCHITECTURES by mavericks_add_updater_app.
           shipyard-cmake -S . -B "$BUILD" -DCMAKE_OBJC_COMPILER=/usr/bin/clang \
             -DCMAKE_TOOLCHAIN_FILE="$SHIPYARD_SCRIPTS/../MavericksToolchain.cmake"
-          shipyard-cmake --build "$BUILD" --target GoUpdater
-          otool -L "$BUILD/GoUpdater.app/Contents/MacOS/GoUpdater" | tee /tmp/o.txt
-          ! grep -qi 'usr/local/go126' /tmp/o.txt || { echo "::error::updater links the toolchain it updates"; exit 1; }
+          shipyard-cmake --build "$BUILD" --target go${{ needs.plan.outputs.line }}-updater
+          otool -L "$BUILD/go${{ needs.plan.outputs.line }}-updater.app/Contents/MacOS/go${{ needs.plan.outputs.line }}-updater" | tee /tmp/o.txt
+          ! grep -qi 'usr/local/mavergreen/go126' /tmp/o.txt || { echo "::error::updater links the toolchain it updates"; exit 1; }
 
       - name: Package the native .pkg (updater + 10.9.5 floor) + tarball + manifest
-        run: UPD_APP="$MAVERICKS_BUILD_ROOT/golang-updater/GoUpdater.app" sh build/package-pkg.sh
+        run: UPD_APP="$MAVERICKS_BUILD_ROOT/golang-updater/go${{ needs.plan.outputs.line }}-updater.app" sh build/package-pkg.sh
 
       # --- cross product (runs on modern macOS, targets 10.9) ---
       - name: Cross-build the cross toolchain (native arm64)
@@ -202,10 +203,10 @@ jobs:
           # (arm64, set by MAVGO_VARIANT=cross) -- no hand-plumbed framework path.
           shipyard-cmake -S . -B "$BUILD" -DMAVGO_VARIANT=cross -DCMAKE_OBJC_COMPILER=/usr/bin/clang \
             -DCMAKE_TOOLCHAIN_FILE="$SHIPYARD_SCRIPTS/../MavericksToolchain.cmake"
-          shipyard-cmake --build "$BUILD" --target GoCrossUpdater
+          shipyard-cmake --build "$BUILD" --target go${{ needs.plan.outputs.line }}-cross-updater
 
       - name: Package the cross .pkg + tarball + manifest
-        run: UPD_APP="$MAVERICKS_BUILD_ROOT/golang-updater-cross/GoCrossUpdater.app" sh build/package-cross-pkg.sh
+        run: UPD_APP="$MAVERICKS_BUILD_ROOT/golang-updater-cross/go${{ needs.plan.outputs.line }}-cross-updater.app" sh build/package-cross-pkg.sh
 
       - name: The build must not have written into the source tree
         run: sh "$SHIPYARD_SCRIPTS/assert-tree-clean.sh"
@@ -218,7 +219,7 @@ jobs:
       # variant -- the cross appcast below carries its own real floor (--min-os 11.0) independently.
       #
       # --line wants the upstream tag-glob prefix ("1.26"), NOT the product id GO_LINE ("126") this
-      # job already carries -- GO_LINE names the install prefix (/usr/local/go126); it is not the
+      # job already carries -- GO_LINE names the install prefix (/usr/local/mavergreen/go126); it is not the
       # dotted version prefix every "<line>-mavericks.*" tag actually starts with. Passing GO_LINE
       # verbatim here would silently match no tag (none begins with "126"), which drops the
       # ingredient section AND the compare link on every future release -- confirmed by generating
@@ -246,30 +247,32 @@ jobs:
           SH="$SHIPYARD_SCRIPTS"   # exported by install@v1; don't re-derive it from the registry
           [ -d "$SH" ] || { echo "::error::SHIPYARD_SCRIPTS not set by install@v1"; exit 1; }
           VER="${{ steps.ver.outputs.full }}"; TAG="${{ steps.ver.outputs.tag }}"
+          LINE="${{ needs.plan.outputs.line }}"
           OUT="$MAVERICKS_BUILD_ROOT/golang-native/out"
           base="https://github.com/${GITHUB_REPOSITORY}/releases/download/$TAG"
           NPKG=$(ls "$OUT"/*native*.pkg | head -1)
-          # sign_and_appcast.sh auto-fetches the prebuilt ed25519-sign, signs the pkg, and renders the appcast.
-          # native -> appcast.xml (10.9.5 floor)
+          # sign_and_appcast.sh auto-fetches the prebuilt ed25519-sign, signs the pkg, and writes its feed.
+          # native -> go$LINE.xml (10.9.5 floor)
           sh "$SH/sign_and_appcast.sh" \
             --channel-title "Mavericks Go 1.26" --version "$VER" \
             --pkg-url "$base/$(basename "$NPKG")" --notes-file dist/RELEASE_NOTES.md \
-            --pkg "$NPKG" --min-os 10.9.5 > "$OUT/appcast.xml"
+            --pkg "$NPKG" --min-os 10.9.5 --product "go$LINE" --feed-dir "$OUT"
           XPKG=$(ls "$OUT"/*cross*.pkg | head -1)
-          # cross -> appcast-cross.xml (modern floor: the updater is arm64/min-11)
+          # cross -> go$LINE-cross.xml (modern floor: the updater is arm64/min-11)
           sh "$SH/sign_and_appcast.sh" \
             --channel-title "Mavericks Go 1.26 (cross)" --version "$VER" \
             --pkg-url "$base/$(basename "$XPKG")" --notes-file dist/RELEASE_NOTES.md \
-            --pkg "$XPKG" --min-os 11.0 > "$OUT/appcast-cross.xml"
-          echo "=== appcast.xml ==="; cat "$OUT/appcast.xml"
-          echo "=== appcast-cross.xml ==="; cat "$OUT/appcast-cross.xml"
+            --pkg "$XPKG" --min-os 11.0 --product "go$LINE-cross" --feed-dir "$OUT"
+          echo "=== go$LINE.xml ==="; cat "$OUT/go$LINE.xml"
+          echo "=== go$LINE-cross.xml ==="; cat "$OUT/go$LINE-cross.xml"
 
       - name: Collect artifacts
         run: |
+          LINE="${{ needs.plan.outputs.line }}"
           OUT="$MAVERICKS_BUILD_ROOT/golang-native/out"
           mkdir -p dist
           cp "$OUT"/*.pkg dist/                            # both products' installers (GHA installs via installer -pkg)
-          for f in appcast.xml appcast-cross.xml; do [ -f "$OUT/$f" ] && cp "$OUT/$f" dist/ || true; done
+          for f in "go$LINE.xml" "go$LINE-cross.xml"; do [ -f "$OUT/$f" ] && cp "$OUT/$f" dist/ || true; done
           # What each variant was built from -- conformance compares them, and a reader can see it.
           for f in build-info-native.txt build-info-cross.txt; do [ -f "$OUT/$f" ] && cp "$OUT/$f" dist/ || true; done
           # dist/RELEASE_NOTES.md was already staged above -- the SAME bytes both appcasts used, so
@@ -290,7 +293,7 @@ jobs:
           # LINE. Scope the tag search to the line (1.26.5-mavericks.5 -> glob 1.26.*) so 1.26.7
           # compares against 1.26.5, not a 1.27.0 shipped between. Both native + cross carry this VER.
           GLOB="$(printf '%s' "${{ needs.plan.outputs.version }}" | sed 's/-mavericks\..*//' | cut -d. -f1,2).*"
-          for a in appcast.xml appcast-cross.xml; do
+          for a in "go${{ needs.plan.outputs.line }}.xml" "go${{ needs.plan.outputs.line }}-cross.xml"; do
             sh "$SHIPYARD_SCRIPTS/assert_appcast_upgradeable.sh" --appcast "dist/$a" --version "${{ needs.plan.outputs.version }}" --upstream-glob "$GLOB"
           done
 
@@ -302,8 +305,8 @@ jobs:
   # Before anything is published: no log of this run, and no file about to be released, carries a
   # piece of the signing key. shipyard's publish-release.yml looks for this job's record on any signed
   # release; it cannot run the scan itself (reading job logs needs actions: read). One artifact holds
-  # both signed products (native + cross .pkg and both appcasts), so one scan covers everything
-  # publish attaches -- and feed, which only copies those appcasts, follows publish.
+  # both signed products (native + cross .pkg and both feeds), so one scan covers everything
+  # publish attaches.
   scan:
     needs: [plan, build]
     if: always() && (needs.plan.outputs.any_publish == 'true')   # a build that fails after signing left logs too; scan them
@@ -325,37 +328,3 @@ jobs:
     with:
       version: ${{ needs.plan.outputs.version }}
       artifact: golang-go${{ needs.plan.outputs.line }}
-
-  # The per-line UPDATE FEED. Installed updaters poll a fixed `feed-126` URL, so it must never
-  # change; a future Go line lives in its own repo with its own feed, not a second line here.
-  # Its appcast assets are replaced on every publish. It is a prerelease so it stays out of the
-  # way of the real releases.
-  feed:
-    needs: [plan, publish]
-    if: needs.plan.outputs.any_publish == 'true'
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/download-artifact@v8
-        with:
-          name: golang-go${{ needs.plan.outputs.line }}
-          path: dist
-      - name: Point feed-${{ needs.plan.outputs.line }} at ${{ needs.plan.outputs.version }}
-        env:
-          GH_TOKEN: ${{ github.token }}
-          LINE: ${{ needs.plan.outputs.line }}
-          VER: ${{ needs.plan.outputs.version }}
-        run: |
-          set -eu
-          ls dist/appcast.xml dist/appcast-cross.xml >/dev/null   # a feed with no appcast is a broken product
-          # --repo on every call: this job downloads an artifact and never checks out, so `gh` has no
-          # git remote to infer the repository from ("fatal: not a git repository").
-          R="$GITHUB_REPOSITORY"
-          if ! gh release view "feed-$LINE" --repo "$R" >/dev/null 2>&1; then
-            gh release create "feed-$LINE" --repo "$R" --prerelease \
-              --title "go$LINE update feed" \
-              --notes "Sparkle appcast for the go$LINE line. Its assets are replaced on every go$LINE release; the tag itself never moves, which is the point -- installed updaters poll this URL and must never be handed another line's release."
-          fi
-          gh release upload "feed-$LINE" --repo "$R" dist/appcast.xml dist/appcast-cross.xml --clobber
-          echo "feed-$LINE now serves $VER"

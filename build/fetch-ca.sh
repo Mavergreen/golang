@@ -1,4 +1,5 @@
 #!/bin/sh
+# platform: host-agnostic
 # Provide the pinned CA bundle at $WORK/ca-certificates.crt.
 #
 # The bundle is VENDORED at vendor/cacert.pem and used from there by default, so

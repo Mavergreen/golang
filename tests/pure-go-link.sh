@@ -1,9 +1,10 @@
 #!/bin/sh
+# platform: macOS-only -- builds darwin/amd64 programs with the toolchain and inspects their Mach-O
 # A PURE-Go program (no cgo) built by our toolchain must be 10.9-safe: external-linked through the
 # CC wrapper (legacy shim + 10.9 minimum), not internal-linked to Go's 12.0 floor with clock_gettime
 # unresolved. Covers the default build, CGO_ENABLED=0 and a `go test` binary, and checks that a
 # cross-OS build (GOOS=linux CGO_ENABLED=0) still links internally.
-#   On the 10.9 box: builds AND runs.            PURE_GO_GOROOT=/usr/local/go126 sh pure-go-link.sh
+#   On the 10.9 box: builds AND runs.            PURE_GO_GOROOT=/usr/local/mavergreen/go126 sh pure-go-link.sh
 #   Elsewhere (CI):  builds with the staged cross toolchain and inspects the Mach-O + compat guard.
 # No toolchain to test -> exit 77 (SKIP).
 set -eu

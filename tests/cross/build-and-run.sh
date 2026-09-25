@@ -1,4 +1,5 @@
 #!/bin/sh
+# platform: macOS-only -- runs the darwin/arm64 cross toolchain and reads the Mach-O it emits with otool
 # Cross-build the sample app on THIS arm64 host with the -cross toolchain (no env needed: go.env
 # defaults GOOS/GOARCH/CC), guard it as a 10.9 binary, and run it on the real 10.9 box.
 set -eu

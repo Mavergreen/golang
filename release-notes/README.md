@@ -7,7 +7,7 @@ both Sparkle appcast `<description>`s (native and cross) -- the same bytes, read
 
 The footer's install-floor line describes the native `.pkg` (`--min-os 10.9.5`), the variant
 most users install. The cross variant's own, different minimum (it runs on modern
-Apple-Silicon macOS; it does not carry a 10.9 floor) lives only in `appcast-cross.xml`, via its
+Apple-Silicon macOS; it does not carry a 10.9 floor) lives only in `go126-cross.xml`, via its
 own `sign_and_appcast.sh --min-os` argument -- the notes describe the product, each appcast
 describes the artifact it serves.
 

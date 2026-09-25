@@ -1,4 +1,5 @@
 #!/bin/sh
+# platform: macOS-only -- pkgbuild and productbuild (via set_install_floor.sh) build the installer archive
 set -eu
 here="$(cd "$(dirname "$0")" && pwd)"
 . "$here/versions.sh"
@@ -12,35 +13,27 @@ out="$WORK/out"; mkdir -p "$out"
 base="golang-${GO_VERSION}-native-${PKG_VERSION#*-}"   # golang-1.26.5-native-mavericks.<rev>
 pkg="$out/$base.pkg"
 
-# Stage the Sparkle updater app + manual-trigger shim + daily-check LaunchAgent + the postinstall
-# that loads the agent -- all rendered by the shared helper. Skipped if the updater isn't built.
 : "${SHIPYARD_SCRIPTS:?mavericks-shipyard not found; install it -- see its README}"
-UPD_APP="${UPD_APP:-/updater/GoUpdater.app}"
-set --
+UPD_APP="${UPD_APP:-/updater/go${GO_LINE}-updater.app}"
+scr="$out/pkg-scripts"; rm -rf "$scr"
+set -- --stage "$stage" --product "go${GO_LINE}" --name "Go ${GO_VERSION%.*} for Mavericks" \
+  --group go --line "$GO_LINE" --version "$PKG_VERSION" \
+  --exclude bin/mavericks-clang --scripts-out "$scr"
 if [ -d "$UPD_APP" ]; then
-  scr="$out/pkg-scripts"; rm -rf "$scr"; mkdir -p "$scr"
-  sh "$SHIPYARD_SCRIPTS/stage_updater.sh" \
-    --stage "$stage" \
-    --app "$UPD_APP" \
-    --app-dir "/Library/Application Support/Mavergreen" \
-    --agent-label "dev.mavergreen.golang.go${GO_LINE}-updatecheck" \
-    --scripts-out "$scr"
-  set -- --scripts "$scr"
+  set -- "$@" --updater-app "$UPD_APP"
 else
   echo ">> WARNING: no updater at $UPD_APP; packaging toolchain only (build it: shipyard-cmake --build)" >&2
 fi
+find "$stage" -name '._*' -delete 2>/dev/null || true   # strip AppleDouble cruft
+sh "$SHIPYARD_SCRIPTS/stage_product.sh" "$@"
 
 # Install resources (welcome + Go license shown at install).
 RES="$out/resources"; mkdir -p "$RES"
 cp "$REPO_ROOT/scripts/resources/Welcome.html" "$RES/"
 [ -f "$stage$PREFIX/LICENSE" ] && cp "$stage$PREFIX/LICENSE" "$RES/LICENSE.txt" || true
 
-# Flat component pkg over the whole payload (/usr/local/... + /Library/LaunchAgents),
-# with the postinstall that loads the update-check agent.
-find "$stage" -name '._*' -delete 2>/dev/null || true   # strip AppleDouble cruft
 comp="$out/golang-go${GO_LINE}-component.pkg"
-pkgbuild --root "$stage" --identifier "dev.mavergreen.golang.go${GO_LINE}" --version "$PKG_VERSION" \
-         "$@" --install-location / "$comp"
+pkgbuild --root "$stage" --identifier "dev.mavergreen.golang.go${GO_LINE}" --version "$PKG_VERSION" --scripts "$scr" --install-location / "$comp"
 
 # Product archive with the 10.9.5 OS floor (shared helper, from the installed prefix).
 HELPER="$SHIPYARD_SCRIPTS/set_install_floor.sh"
@@ -49,7 +42,7 @@ sh "$HELPER" \
   --identifier "dev.mavergreen.golang.go${GO_LINE}" \
   --title "go${GO_LINE} — modern Go ${GO_VERSION%.*} for OS X 10.9" \
   --component "$comp" --out "$pkg" \
-  --resources "$RES" --welcome Welcome.html $lic --host-arch x86_64
+  --resources "$RES" --welcome Welcome.html $lic --host-arch x86_64 --require-scripts
 rm -f "$comp"   # intermediate: only the floored product archive ships
 # Provenance lives in versioned form: input pins in build/versions.sh, output hash in the
 # release's SHA256SUMS. No separate manifest or tarball artifact.

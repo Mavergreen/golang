@@ -1,4 +1,5 @@
 #!/bin/sh
+# platform: host-agnostic
 # On-box trust smoke. Uses Let's Encrypt's PINNED single-root endpoints so the
 # result is immune to CA-hierarchy churn (public sites like letsencrypt.org now
 # dual-root via ISRG Root X2, so distrusting X1 alone no longer blocks them).

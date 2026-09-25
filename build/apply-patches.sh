@@ -1,4 +1,5 @@
 #!/bin/sh
+# platform: macOS-only -- edits the Go tree in place with BSD sed's `sed -i ''`
 set -eu
 . "$(cd "$(dirname "$0")" && pwd)/versions.sh"
 

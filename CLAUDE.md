@@ -6,7 +6,8 @@ auto-updater — entirely on modern hardware. No 10.9 build runner anywhere.
 
 **Status:** built and proven end-to-end on real 10.9.5 hardware (`ultimate-hat`), and published to
 GitHub Releases. Ships as `golang-<gover>-native-mavericks.<rev>.pkg` and
-`golang-<gover>-cross-mavericks.<rev>.pkg` (native installs to `/usr/local/go126`).
+`golang-<gover>-cross-mavericks.<rev>.pkg`, which install `/usr/local/mavergreen/go126` and
+`/usr/local/mavergreen/go126-cross`.
 
 ## Build / release
 
@@ -23,17 +24,19 @@ GitHub Releases. Ships as `golang-<gover>-native-mavericks.<rev>.pkg` and
   `workflow_dispatch local_release=true`.
 - **This repo ships ONE Go minor line (1.26) from the repo root.** `UPSTREAM_VERSION` and `patches/`
   live at the top level, not under a per-line directory; everything else derives from the line number
-  (`/usr/local/go126`, `dev.mavergreen.golang.go126`, the LaunchAgent label, the product title,
-  and the Sparkle feed `feed-126`). The line number is itself **derived** from `UPSTREAM_VERSION`
+  (the products `go126` and `go126-cross` in `/usr/local/mavergreen/`, group `go`,
+  `dev.mavergreen.golang.go126`, the product title, and, through shipyard's registry, each updater's
+  bundle id, LaunchAgent label and feed `<short>.xml` at `/releases/latest/download/`; there is no
+  separate feed release). The line number is itself **derived** from `UPSTREAM_VERSION`
   (`build/version.sh line`; 1.26.5 → 126), never configured separately.
-  - **A new Go minor line is a NEW REPO** (`Mavergreen/golang-127`), forked from this one — not a
-    second directory here. It inherits this repo's `patches/` as its starting point. `docs/` is
-    gitignored here (tracked out-of-band, not present in a clone) — for why, see the commits that
-    made it so: "refactor: retire lines/, ship one line from the repo root" and ec77028
-    ("ci: build one line, not a matrix — unblock the stuck Renovate PRs"). This repo's Renovate cap
-    (`allowedVersions: "<1.27"` on `go-126`) is what keeps this repo on 1.26.x so it can never drift
-    onto the next line by itself. A new line gets noticed the ordinary way: a consumer's routine
-    Renovate bump (e.g. a tailscale bump needing Go 1.27) fails its build.
+  - **A new Go minor line is a NEW REPO** (`Mavergreen/golang-127`), forked from this one
+    (`Mavergreen/golang-126`) — not a second directory here. It inherits this repo's `patches/` as
+    its starting point. `docs/` is gitignored here (tracked out-of-band, not present in a clone) —
+    for why, see the commits that made it so: "refactor: retire lines/, ship one line from the repo
+    root" and ec77028 ("ci: build one line, not a matrix — unblock the stuck Renovate PRs"). This
+    repo's Renovate cap (`allowedVersions: "<1.27"` on `go-126`) is what keeps this repo on 1.26.x
+    so it can never drift onto the next line by itself. A new line gets noticed the ordinary way: a
+    consumer's routine Renovate bump (e.g. a tailscale bump needing Go 1.27) fails its build.
   - The gates are what keep a line safe to ship, not fuzzy patch application: patches 0005–0010 and
     0013–0015 are the keychain-union trust model in `src/crypto/x509`, exactly where Go churns between
     minors. A fuzzy apply (`patch -p0 -F 3`) can succeed and be wrong — that is what `tests/trust/` and

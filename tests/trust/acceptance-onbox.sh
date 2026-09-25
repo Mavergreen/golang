@@ -1,4 +1,5 @@
 #!/bin/sh
+# platform: macOS-only -- runs on the 10.9 box, verifying TLS against its keychains
 # On-box trust acceptance -- run ON a 10.9 box whose System keychain trusts ISRG Root X1 (as
 # ultimate-hat's does). Both verifiers against real endpoints: the default Go keychain union and
 # Apple's (GODEBUG=x509usefallbackroots=0); the user trust domain via userdeny; and a program that
@@ -6,7 +7,7 @@
 #   usage: [GOROOT=/path/to/goroot] sh tests/trust/acceptance-onbox.sh
 set -eu
 here="$(cd "$(dirname "$0")" && pwd)"
-goroot="${GOROOT:-/usr/local/go126}"
+goroot="${GOROOT:-/usr/local/mavergreen/go126}"
 tmp="$(mktemp -d "${TMPDIR:-/tmp}/accept.XXXXXX")"
 trap 'rm -rf "$tmp"' EXIT
 unset HTTPS_PROXY HTTP_PROXY ALL_PROXY GODEBUG

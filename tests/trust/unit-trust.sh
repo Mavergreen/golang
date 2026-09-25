@@ -1,4 +1,5 @@
 #!/bin/sh
+# platform: macOS-only -- builds the patched toolchain for the host and runs crypto/x509's darwin keychain tests
 # Build the patched go126 for the HOST and run the keychain-union trust unit tests.
 # The trust logic (buildKeychainUnionPool, the veto, and the env resolver) is
 # build-tag-free, so a host build on macOS exercises it. This is the automated gate
