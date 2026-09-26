@@ -47,7 +47,7 @@ export GO_SRC_URL="https://go.dev/dl/go${GO_VERSION}.src.tar.gz"
 # release (Mavergreen/macports-legacy-support) — no from-source build here. Integrity is
 # checked against the release's SHA256SUMS every run. Renovate bumps this pin via the
 # shared preset's `# mavericks-legacysupport` customManager (unquoted, marker on the line).
-export MLS_VERSION=1.5.2-mavericks.4   # mavericks-legacysupport
+export MLS_VERSION=1.5.2-mavericks.6   # mavericks-legacysupport
 
 export PREFIX="/usr/local/mavergreen/go${GO_LINE}"
 export MACOS_MIN="10.9"
